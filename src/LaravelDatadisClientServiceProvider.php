@@ -3,6 +3,7 @@
 namespace Lenorix\LaravelDatadisClient;
 
 use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\DatadisClient\PublicApiClient;
 use Lenorix\LaravelDatadisClient\Commands\SuppliesCommand;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -23,5 +24,6 @@ class LaravelDatadisClientServiceProvider extends PackageServiceProvider
 
         // bind, not singleton: the client is built where it is used, after any Http::fake() in a test.
         $this->app->bind(DatadisClient::class, fn ($app) => $app->make(LaravelDatadisClient::class)->account());
+        $this->app->bind(PublicApiClient::class, fn ($app) => $app->make(LaravelDatadisClient::class)->publicApi());
     }
 }

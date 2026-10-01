@@ -4,9 +4,14 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
+use Lenorix\DatadisClient\Exceptions\DatadisException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
+use Lenorix\DatadisClient\PublicApi\Community;
+use Lenorix\DatadisClient\PublicApi\PublicSearchQuery;
+use Lenorix\DatadisClient\PublicApiClient;
 use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
@@ -28,6 +33,9 @@ function fakeDatadis(): void
             'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2',
             'validDateFrom' => '2020/01/01', 'validDateTo' => '', 'postalCode' => '28001',
         ]], 'distributorError' => []]),
+        '*/api-private/api/get-contract-detail*' => Http::response(['contract' => [], 'distributorError' => []]),
+        '*/api-private/api/get-max-power*' => Http::response(['maxPower' => [], 'distributorError' => []]),
+        '*/api-public/api-search*' => Http::response([]),
         '*/api-private/api/get-consumption-data*' => Http::response(['timeCurve' => [], 'distributorError' => []]),
     ]);
 }
@@ -149,4 +157,46 @@ it('does not apply services.datadis to other accounts', function () {
     config()->set('services.datadis', ['username' => '12345678Z', 'password' => 'x']);
 
     expect(fn () => app(Manager::class)->account('other'))->toThrow(InvalidArgumentException::class);
+});
+
+it('sends the holder on supplies, contract, consumption and power calls, from the facade and the injected client', function (Closure $client) {
+    fakeDatadis();
+    $holder = $client()->forHolder(Nif::fromString('12345678Z'));
+    $supply = $holder->findSupply(Cups::fromString(CUPS));
+
+    $holder->getContractDetailOf($supply);
+    $holder->getConsumptionDataOf($supply, Month::of(2026, 7));
+    $holder->getMaxPowerOf($supply, Month::of(2026, 7));
+
+    foreach (['get-supplies', 'get-contract-detail', 'get-consumption-data', 'get-max-power'] as $endpoint) {
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), $endpoint) && str_contains($r->url(), 'authorizedNif=12345678Z'));
+    }
+})->with([
+    'facade' => [fn () => LaravelDatadisClient::account()],
+    'injected' => [fn () => app(DatadisClient::class)],
+]);
+
+it('does not send authorizedNif for the account\'s own supplies', function () {
+    fakeDatadis();
+
+    app(DatadisClient::class)->getSupplies();
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), 'get-supplies') && ! str_contains($r->url(), 'authorizedNif'));
+});
+
+it('exposes the public open data client, sharing the login', function () {
+    fakeDatadis();
+    $query = new PublicSearchQuery(new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2026-01-31'), [Community::Madrid]);
+
+    app(PublicApiClient::class)->apiSearch($query);
+    app(DatadisClient::class)->getSupplies();
+
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'api-public/api-search')))->toHaveCount(1);
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'login')))->toHaveCount(1);
+    expect(app(Manager::class)->publicApi())->toBeInstanceOf(PublicApiClient::class);
+    expect(fn () => app(Manager::class)->publicApi('missing'))->toThrow(InvalidArgumentException::class);
+});
+
+it('refuses real requests nothing faked', function () {
+    expect(fn () => app(DatadisClient::class)->getSupplies())->toThrow(DatadisException::class, 'StrayRequestException');
 });

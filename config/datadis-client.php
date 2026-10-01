@@ -53,10 +53,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | The login token and the 24 hour guard live in this cache store, shared by
-    | every worker. Use one that adds a key atomically (redis, memcached,
-    | database, dynamodb): with `file` or `array` two workers may still send the
-    | same query. Null uses the default store. Protect it like a password: it
-    | holds the Datadis token.
+    | every worker, so the guard needs a store whose add() is atomic: redis,
+    | memcached, database and dynamodb work from any host; `file` locks the
+    | file, so it only coordinates processes on the same host and filesystem
+    | (not several servers); `array` lives in one process, so it protects
+    | nothing across workers or runs. Null uses the default store. Protect it
+    | like a password: it holds the Datadis token.
     |
     */
     'cache' => [

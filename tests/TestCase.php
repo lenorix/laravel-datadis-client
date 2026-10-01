@@ -2,11 +2,20 @@
 
 namespace Lenorix\LaravelDatadisClient\Tests;
 
+use Illuminate\Support\Facades\Http;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClientServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 class TestCase extends Orchestra
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // A request nothing faked would reach the real Datadis, where a repeated query counts for 24 hours.
+        Http::preventStrayRequests();
+    }
+
     protected function getPackageProviders($app)
     {
         return [

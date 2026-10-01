@@ -45,6 +45,8 @@ Http::fake([
 
 - A repeated guarded query: build two clients (`app(DatadisClient::class)` twice) and expect `RepetitionWindowException` on the second, with only one request recorded: `Http::assertSentCount(...)`.
 - Failures: `Http::response('', 404)` gives `NoDataException`; `Http::response(..., 503)` gives `ServiceUnavailableException`; assert `requestSent`.
+- Strays: the package's own suite calls `Http::preventStrayRequests()` in `setUp()`; do the same so a URL that stops matching fails instead of reaching Datadis.
+- Holders: assert `authorizedNif=<NIF>` in the URL after `forHolder()`; it is omitted for the account's own NIF.
 - Another account: `LaravelDatadisClient::account('other')` after setting `datadis-client.accounts.other`.
 - Never assert on real money or energy with floats: compare decimal strings.
 

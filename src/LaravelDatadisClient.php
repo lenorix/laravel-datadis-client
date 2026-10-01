@@ -14,7 +14,9 @@ use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\DatadisClient\Http\GuzzleClientFactory;
+use Lenorix\DatadisClient\PublicApiClient;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
+use Psr\Http\Client\ClientInterface;
 
 /**
  * Builds the DatadisClient of each configured account on the application's HTTP client and cache.
@@ -40,7 +42,7 @@ class LaravelDatadisClient
      */
     public function account(?string $name = null): DatadisClient
     {
-        $name ??= (string) $this->config()->get('datadis-client.default', 'default');
+        $name ??= $this->defaultAccount();
         $settings = $this->settings($name);
 
         if ($settings === null) {
@@ -51,8 +53,7 @@ class LaravelDatadisClient
 
         return DatadisClient::fromArray(
             $settings,
-            // The package's Guzzle settings on Laravel's handler stack, so Http::fake() and Http::assertSent() see every call.
-            http: GuzzleClientFactory::create(DatadisConfig::fromArray($settings), ['handler' => $this->app->make(Http::class)->buildHandlerStack()]),
+            http: $this->http($settings),
             tokenCache: $store,
             ledger: new RequestLedger(
                 $store,
@@ -60,6 +61,21 @@ class LaravelDatadisClient
                 atomic: new LaravelAtomicStore($store),
             ),
         );
+    }
+
+    /**
+     * The client of the public open data (aggregated consumption by region, tariff, sector...) for an
+     * account. Datadis still asks for an account's token. It shares the login with the private client.
+     *
+     * @throws InvalidArgumentException when the account is not configured
+     * @throws ConfigurationException when its settings are wrong
+     */
+    public function publicApi(?string $name = null): PublicApiClient
+    {
+        $settings = $this->settings($name ??= $this->defaultAccount())
+            ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
+
+        return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http($settings), tokenCache: $this->store());
     }
 
     /**
@@ -80,13 +96,28 @@ class LaravelDatadisClient
     private function settings(string $name): ?array
     {
         $account = $this->config()->get("datadis-client.accounts.{$name}");
-        $service = $name === $this->config()->get('datadis-client.default', 'default') ? $this->config()->get('services.datadis') : null;
+        $service = $name === $this->defaultAccount() ? $this->config()->get('services.datadis') : null;
 
         if (! is_array($account) && ! is_array($service)) {
             return null;
         }
 
         return array_replace(is_array($account) ? $account : [], array_filter(is_array($service) ? $service : [], fn ($value) => $value !== null && $value !== ''));
+    }
+
+    private function defaultAccount(): string
+    {
+        return (string) $this->config()->get('datadis-client.default', 'default');
+    }
+
+    /**
+     * The package's Guzzle settings on Laravel's handler stack, so Http::fake() and Http::assertSent() see every call.
+     *
+     * @param  array<array-key, mixed>  $settings
+     */
+    private function http(array $settings): ClientInterface
+    {
+        return GuzzleClientFactory::create(DatadisConfig::fromArray($settings), ['handler' => $this->app->make(Http::class)->buildHandlerStack()]);
     }
 
     private function config(): Config

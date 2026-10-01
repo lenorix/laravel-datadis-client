@@ -63,6 +63,16 @@ $holder = Datadis::forHolder(Nif::fromString('00000000T')); // someone who autho
 
 Define each account under `accounts` in the configuration with the same keys as `default`.
 
+### Public open data
+
+Aggregated consumption by region, tariff and sector. Datadis still asks for an account's token, which it shares with the private client:
+
+```php
+use Lenorix\DatadisClient\PublicApiClient;
+
+app(PublicApiClient::class)->apiSearch($query);   // or Datadis::publicApi('other')
+```
+
 ### Command
 
 ```bash
@@ -79,7 +89,7 @@ The client holds a password and cannot be serialised: resolve it in `handle()`, 
 |---|---|
 | `default` | Account used by the binding, the facade and the command (`DATADIS_ACCOUNT`). |
 | `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`. |
-| `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty. Use Redis, Memcached, database or DynamoDB: with `file` or `array` the guard cannot be atomic across processes. It holds the token, so protect it like a password. |
+| `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
 | `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |
 
 A repeated query fails with `RepetitionWindowException` before anything is sent.
