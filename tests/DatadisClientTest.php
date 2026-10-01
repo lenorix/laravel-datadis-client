@@ -176,3 +176,15 @@ it('exposes the public open data client, sharing the login', function () {
 it('refuses real requests nothing faked', function () {
     expect(fn () => app(DatadisClient::class)->getSupplies())->toThrow(DatadisException::class, 'StrayRequestException');
 });
+
+it('publishes the config under the package tag and ships sensible defaults', function () {
+    expect(config('datadis-client.default'))->toBe('default');
+    expect(config('datadis-client.accounts.default.api_version'))->toBe('v2');
+    expect(config('datadis-client.accounts.default.timezone'))->toBe('Europe/Madrid');
+    expect(config('datadis-client.accounts.default.timeout'))->toBe(120);
+    expect(config('datadis-client'))->toHaveKeys(['cache', 'ledger']);
+
+    $this->artisan('vendor:publish', ['--tag' => 'datadis-client-config', '--force' => true])->assertSuccessful();
+    expect(config_path('datadis-client.php'))->toBeFile();
+    unlink(config_path('datadis-client.php'));
+});

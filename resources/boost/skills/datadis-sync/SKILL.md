@@ -23,6 +23,8 @@ Datadis refuses an identical consumption, maximum power or reactive query for 24
 `MonthPlanner` turns a range into the requests worth making (only months Datadis serves and, given the supply, only months of its contract). One month per request is the default on purpose.
 
 ```php
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\NoDataException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
@@ -72,4 +74,5 @@ class SyncSupply implements ShouldQueue
 - The current month keeps changing for some days after it ends and has no data for the last ~2 days; do not treat a run of trailing zeros as real. Re-sync only months that can still change, and only once a day.
 - Upsert readings by supply and real `start` (not date + time: the autumn change repeats `03:00`), and keep the energy as decimal strings or integer-scaled values, never floats.
 - One account, one login: the token is cached in the shared store, so many workers do not log in repeatedly. Do not run many accounts' jobs at the same instant against one rate-sensitive store without need.
+- With `lenorix/datadis-client` 0.2.0 a `401` on a guarded query is retried once after a new login, and a range before the contract start is sent instead of refused: always plan ranges with `MonthPlanner::ranges(..., supply: $supply)`.
 - Report `RepetitionWindowException` at info/warning level, not as an application error.

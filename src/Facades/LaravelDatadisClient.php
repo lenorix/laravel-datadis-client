@@ -4,9 +4,11 @@ namespace Lenorix\LaravelDatadisClient\Facades;
 
 use Illuminate\Support\Facades\Facade;
 use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\DatadisClient\PublicApiClient;
 
 /**
  * @method static DatadisClient account(?string $name = null)
+ * @method static PublicApiClient publicApi(?string $name = null)
  *
  * @mixin DatadisClient
  *
