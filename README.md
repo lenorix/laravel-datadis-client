@@ -56,6 +56,8 @@ See the [client documentation](https://github.com/lenorix/datadis-php-client#rea
 ### Several accounts and holders
 
 ```php
+use Lenorix\DatadisClient\Values\Nif;
+
 Datadis::account('other')->getSupplies();
 
 $holder = Datadis::forHolder(Nif::fromString('00000000T')); // someone who authorized your account
@@ -78,6 +80,10 @@ app(PublicApiClient::class)->apiSearch($query);   // or Datadis::publicApi('othe
 ```bash
 php artisan datadis:supplies [--account=other] [--holder=00000000T]
 ```
+
+### Logging and request recorders
+
+Calls go through Laravel's `Http` client, so global HTTP middleware and recorders such as Telescope or Nightwatch can see the login request (the password) and its answer (the token). Exclude `datadis.es` from them, or from the request bodies they keep.
 
 ### Queued jobs
 
@@ -119,7 +125,8 @@ composer test
 
 ## Credits
 
-- [Jesus Hernandez](https://github.com/lenorix)
+- [Jesus Hernandez](https://github.com/jhg)
+- [All Contributors](https://github.com/lenorix/laravel-datadis-client/graphs/contributors)
 
 ## License
 

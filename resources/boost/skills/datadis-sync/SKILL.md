@@ -23,8 +23,9 @@ Datadis refuses an identical consumption, maximum power or reactive query for 24
 `MonthPlanner` turns a range into the requests worth making (only months Datadis serves and, given the supply, only months of its contract). One month per request is the default on purpose.
 
 ```php
-use Illuminate\Bus\Queueable;
+use DateTimeImmutable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\NoDataException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
