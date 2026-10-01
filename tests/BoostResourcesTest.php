@@ -24,7 +24,7 @@ it('ships the Boost skills', function () use ($skills) {
 it('gives every skill valid frontmatter named after its folder', function (string $path) {
     $contents = file_get_contents($path);
 
-    expect(preg_match('/\A---\nname: (?<name>[a-z0-9-]+)\ndescription: (?<description>.+)\n---\n/', $contents, $m))->toBe(1);
+    expect(preg_match('/\A---\r?\nname: (?<name>[a-z0-9-]+)\r?\ndescription: (?<description>.+?)\r?\n---\r?\n/', $contents, $m))->toBe(1);
     expect($m['name'])->toBe(basename(dirname($path)));
     expect(strlen($m['description']))->toBeLessThanOrEqual(1024);
 })->with($skills);
@@ -34,7 +34,7 @@ it('keeps Blade markup out of the skills, which Boost copies as they are', funct
 })->with($skills);
 
 it('has frontmatter that Boost can parse as YAML', function (string $path) {
-    preg_match('/\A---\n(.*?)\n---\n/s', file_get_contents($path), $m);
+    preg_match('/\A---\r?\n(.*?)\r?\n---\r?\n/s', file_get_contents($path), $m);
 
     $frontmatter = Yaml::parse($m[1]);
 

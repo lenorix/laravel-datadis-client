@@ -1,3 +1,6 @@
+# Keep LF everywhere: the Boost skills and the tests that read them must not depend on Git's line-ending settings
+* text=auto eol=lf
+
 # Path-based git attributes
 # https://www.kernel.org/pub/software/scm/git/docs/gitattributes.html
 
