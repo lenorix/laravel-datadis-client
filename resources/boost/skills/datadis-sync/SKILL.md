@@ -75,4 +75,4 @@ class SyncSupply implements ShouldQueue
 - Upsert readings by supply and real `start` (not date + time: the autumn change repeats `03:00`), and keep the energy as decimal strings or integer-scaled values, never floats.
 - One account, one login: the token is cached in the shared store, so many workers do not log in repeatedly. Do not run many accounts' jobs at the same instant against one rate-sensitive store without need.
 - Plan ranges with `MonthPlanner::ranges(..., supply: $supply)`: a range before the contract start is refused locally, and a `401` on a guarded query is never sent again (the query may already count).
-- Report `RepetitionWindowException` at info/warning level, not as an application error.
+- The package already reports `RepetitionWindowException` as a warning through Laravel's exception handler; do not turn it into an error.

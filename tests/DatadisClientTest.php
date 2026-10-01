@@ -1,16 +1,18 @@
 <?php
 
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\DatadisException;
+use Lenorix\DatadisClient\Exceptions\NoDataException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
+use Lenorix\DatadisClient\Exceptions\ServiceUnavailableException;
 use Lenorix\DatadisClient\PublicApi\Community;
 use Lenorix\DatadisClient\PublicApi\PublicSearchQuery;
 use Lenorix\DatadisClient\PublicApiClient;
-use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
@@ -49,10 +51,10 @@ it('refuses a repeated query across clients through the shared cache', function 
     fakeDatadis();
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
 
-    app(DatadisClient::class)->getConsumptionDataOf($supply, Month::of(2026, 7));
+    app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo());
 
     // A new client, as another worker would have: only the cache remembers the first query.
-    expect(fn () => app(DatadisClient::class)->getConsumptionDataOf($supply, Month::of(2026, 7)))
+    expect(fn () => app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo()))
         ->toThrow(RepetitionWindowException::class);
     Http::assertSentCount(3); // login, supplies, one consumption
 });
@@ -143,8 +145,8 @@ it('sends the holder on supplies, contract, consumption and power calls, from th
     $supply = $holder->findSupply(Cups::fromString(CUPS));
 
     $holder->getContractDetailOf($supply);
-    $holder->getConsumptionDataOf($supply, Month::of(2026, 7));
-    $holder->getMaxPowerOf($supply, Month::of(2026, 7));
+    $holder->getConsumptionDataOf($supply, monthsAgo());
+    $holder->getMaxPowerOf($supply, monthsAgo());
 
     foreach (['get-supplies', 'get-contract-detail', 'get-consumption-data', 'get-max-power'] as $endpoint) {
         Http::assertSent(fn (Request $r) => str_contains($r->url(), $endpoint) && str_contains($r->url(), 'authorizedNif=12345678Z'));
@@ -205,10 +207,10 @@ it('keeps services.datadis on the account named default when another one is the 
 it('reports a refused repeat as a warning, not an error', function () {
     fakeDatadis();
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
-    app(DatadisClient::class)->getConsumptionDataOf($supply, Month::of(2026, 7));
+    app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo());
 
     try {
-        app(DatadisClient::class)->getConsumptionDataOf($supply, Month::of(2026, 7));
+        app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo());
     } catch (RepetitionWindowException $e) {
         $logger = Mockery::mock(LoggerInterface::class);
         $logger->shouldReceive('warning')->once();
@@ -220,3 +222,26 @@ it('reports a refused repeat as a warning, not an error', function () {
 
     expect($e)->toBeInstanceOf(RepetitionWindowException::class);
 });
+
+it('turns the documented failure answers into the exceptions the testing skill promises', function (int $status, string $exception) {
+    fakeDatadis();
+    $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
+    Http::swap(new Factory);
+    Http::preventStrayRequests();
+    Http::fake([
+        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/api-private/api/get-consumption-data*' => Http::response('', $status),
+    ]);
+
+    try {
+        app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo());
+        $caught = null;
+    } catch (DatadisException $caught) {
+    }
+
+    expect($caught)->toBeInstanceOf($exception);
+    expect($caught->requestSent)->toBeTrue();
+})->with([
+    '404 is no data' => [404, NoDataException::class],
+    '503 is unavailable' => [503, ServiceUnavailableException::class],
+]);

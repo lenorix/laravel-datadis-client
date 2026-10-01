@@ -6,7 +6,6 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
-use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
@@ -53,7 +52,7 @@ it('guards each holder apart: asking for another holder is allowed, repeating on
             fakeDatadis();
             $client = app(DatadisClient::class);
             $supply = $client->findSupply(Cups::fromString(CUPS));
-            $month = Month::of(2025, $month);
+            $month = monthsAgo($month);
 
             $client->forHolder(Nif::fromString(nifOf($a)))->getConsumptionDataOf($supply, $month);
             $client->forHolder(Nif::fromString(nifOf($b)))->getConsumptionDataOf($supply, $month);
@@ -75,7 +74,7 @@ it('sends a guarded query at most once however many clients claim it', function 
 
         for ($i = 0; $i < $claims; $i++) {
             try {
-                app(Manager::class)->account()->getConsumptionDataOf($supply, Month::of(2025, $month));
+                app(Manager::class)->account()->getConsumptionDataOf($supply, monthsAgo($month));
             } catch (RepetitionWindowException) {
                 $refused++;
             }

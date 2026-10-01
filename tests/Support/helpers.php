@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Lenorix\DatadisClient\Time\Month;
 
 const CUPS = 'ES0000000000000000AA0A';
 
@@ -41,4 +42,10 @@ function iterations(): int
 function logins(): array
 {
     return Http::recorded(fn (Request $r) => str_contains($r->url(), 'login'))->map(fn ($pair) => $pair[0]->data())->all();
+}
+
+/** A month the client still serves, so the suite does not expire as the calendar moves. */
+function monthsAgo(int $months = 3): Month
+{
+    return Month::current(new DateTimeImmutable)->addMonths(-$months);
 }
