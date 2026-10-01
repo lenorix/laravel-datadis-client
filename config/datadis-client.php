@@ -80,4 +80,18 @@ return [
         'key' => env('DATADIS_LEDGER_KEY'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Log level of a refused repeat
+    |--------------------------------------------------------------------------
+    |
+    | A query Datadis would refuse for 24 hours is refused here before it is
+    | sent: expected under a scheduler, so it is reported as a warning. The
+    | package sets this on the exception handler after your own
+    | `withExceptions()`, so it wins over a level you set there for
+    | RepetitionWindowException; set null to leave your handler alone.
+    |
+    */
+    'report_level' => env('DATADIS_REPORT_LEVEL', 'warning'),
+
 ];

@@ -245,3 +245,21 @@ it('turns the documented failure answers into the exceptions the testing skill p
     '404 is no data' => [404, NoDataException::class],
     '503 is unavailable' => [503, ServiceUnavailableException::class],
 ]);
+
+it('leaves the exception handler alone when report_level is null', function () {
+    config()->set('datadis-client.report_level', null);
+    app()->forgetInstance(ExceptionHandler::class);
+    $handler = app(ExceptionHandler::class);
+
+    $levels = (fn () => $this->levels)->call($handler);
+
+    expect($levels)->not->toHaveKey(RepetitionWindowException::class);
+});
+
+it('sets the configured level on the exception handler', function () {
+    config()->set('datadis-client.report_level', 'info');
+    app()->forgetInstance(ExceptionHandler::class);
+    $handler = app(ExceptionHandler::class);
+
+    expect((fn () => $this->levels)->call($handler))->toHaveKey(RepetitionWindowException::class, 'info');
+});

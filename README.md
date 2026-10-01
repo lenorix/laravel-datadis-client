@@ -96,6 +96,7 @@ The client holds a password and cannot be serialised: resolve it in `handle()`, 
 | `default` | Account used by the binding, the facade and the command (`DATADIS_ACCOUNT`). |
 | `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`. |
 | `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
+| `report_level` | Log level of a refused repeat (`RepetitionWindowException`), `warning` by default (`DATADIS_REPORT_LEVEL`). It is set after your own `withExceptions()`, so it wins over a level you set there; use `null` to leave your handler alone. |
 | `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |
 
 A repeated query fails with `RepetitionWindowException` before anything is sent.
