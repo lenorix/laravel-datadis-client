@@ -11,24 +11,6 @@ use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
 
-require_once __DIR__.'/../DatadisClientTest.php';
-
-/** A NIF with a valid control letter for any number. */
-function nifOf(int $number): string
-{
-    return sprintf('%08d', $number).'TRWAGMYFPDXBNJZSQVHLCKE'[$number % 23];
-}
-
-function iterations(): int
-{
-    return (int) (getenv('DATADIS_PBT_ITERATIONS') ?: 25);
-}
-
-function logins(): array
-{
-    return Http::recorded(fn (Request $r) => str_contains($r->url(), 'login'))->map(fn ($pair) => $pair[0]->data())->all();
-}
-
 it('takes the credentials from services when set and keeps every other account option', function () {
     $this->limitTo(iterations())->forAll(
         Generators::choose(1, 99999999),   // account username
