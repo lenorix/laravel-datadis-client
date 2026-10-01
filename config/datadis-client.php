@@ -19,7 +19,7 @@ return [
     | Accounts
     |--------------------------------------------------------------------------
     |
-    | The credentials of the default account are read from `services.datadis`
+    | The credentials of the account named `default` are read from `services.datadis`
     | in config/services.php, Laravel's place for third-party services, and win
     | over the keys below:
     |

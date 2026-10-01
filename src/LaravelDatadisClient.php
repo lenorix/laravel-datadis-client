@@ -27,6 +27,9 @@ use Psr\Http\Client\ClientInterface;
  */
 class LaravelDatadisClient
 {
+    /** The account whose credentials `services.datadis` provides. */
+    public const string SERVICES_ACCOUNT = 'default';
+
     /**
      * The collaborators are taken from the container on every call, not kept: a facade holds this
      * object for the whole process, and Http::fake() swaps the HTTP factory after it was built.
@@ -87,16 +90,17 @@ class LaravelDatadisClient
     }
 
     /**
-     * The settings of an account. The credentials of the default account follow Laravel's convention
-     * for third-party services, `config/services.php` (`services.datadis`), and win over the same keys
-     * of `datadis-client.accounts.<name>`, which stay for the other settings and for extra accounts.
+     * The settings of an account. The credentials of the account named `default` follow Laravel's
+     * convention for third-party services, `config/services.php` (`services.datadis`), and win over the
+     * same keys of `datadis-client.accounts.default`, which stay for the other settings. Choosing
+     * another account as `datadis-client.default` changes which account is used, never its credentials.
      *
      * @return array<array-key, mixed>|null
      */
     private function settings(string $name): ?array
     {
         $account = $this->config()->get("datadis-client.accounts.{$name}");
-        $service = $name === $this->defaultAccount() ? $this->config()->get('services.datadis') : null;
+        $service = $name === self::SERVICES_ACCOUNT ? $this->config()->get('services.datadis') : null;
 
         if (! is_array($account) && ! is_array($service)) {
             return null;

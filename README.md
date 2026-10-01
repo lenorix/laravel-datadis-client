@@ -30,7 +30,7 @@ DATADIS_USERNAME=A00000000
 DATADIS_PASSWORD=your-password
 ```
 
-`services.datadis` also accepts the other account settings (`api_version`, `timezone`, `timeout`...) and wins over the default account of `config/datadis-client.php`, which keeps the same `DATADIS_*` variables as a fallback and holds extra accounts.
+`services.datadis` also accepts the other account settings (`api_version`, `timezone`, `timeout`...) and wins over the account named `default` in `config/datadis-client.php`, which keeps the same `DATADIS_*` variables as a fallback and holds extra accounts.
 
 ## Usage
 

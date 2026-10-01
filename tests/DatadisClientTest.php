@@ -188,3 +188,14 @@ it('publishes the config under the package tag and ships sensible defaults', fun
     expect(config_path('datadis-client.php'))->toBeFile();
     unlink(config_path('datadis-client.php'));
 });
+
+it('keeps services.datadis on the account named default when another one is the default', function () {
+    config()->set('datadis-client.default', 'other');
+    config()->set('datadis-client.accounts.other', ['username' => '12345678Z', 'password' => 'other-secret']);
+    config()->set('services.datadis', ['username' => '00000000T', 'password' => 'services-secret']);
+    fakeDatadis();
+
+    app(DatadisClient::class)->getSupplies();
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), 'login') && $r['username'] === '12345678Z' && $r['password'] === 'other-secret');
+});
