@@ -19,6 +19,15 @@ return [
     | Accounts
     |--------------------------------------------------------------------------
     |
+    | The credentials of the default account are read from `services.datadis`
+    | in config/services.php, Laravel's place for third-party services, and win
+    | over the keys below:
+    |
+    |     'datadis' => [
+    |         'username' => env('DATADIS_USERNAME'),
+    |         'password' => env('DATADIS_PASSWORD'),
+    |     ],
+    |
     | Each account is a Datadis login (the NIF, NIE or CIF you registered with
     | and its password). Besides `username` and `password` it accepts the
     | settings of Lenorix\DatadisClient\DatadisClient::fromArray(): `api_version`

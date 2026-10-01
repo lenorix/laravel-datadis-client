@@ -9,6 +9,7 @@ use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
 
 const CUPS = 'ES0000000000000000AA0A';
 
@@ -117,4 +118,35 @@ it('lists supplies with the artisan command', function () {
 
 it('fails the command cleanly for an unknown account', function () {
     $this->artisan('datadis:supplies --account=nope')->assertFailed();
+});
+
+it('sends the holder as authorizedNif from the command', function () {
+    fakeDatadis();
+
+    $this->artisan('datadis:supplies --holder=12345678Z')->assertSuccessful();
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), 'get-supplies') && str_contains($r->url(), 'authorizedNif=12345678Z'));
+});
+
+it('adds to the cache only when the key is absent', function () {
+    $store = new LaravelAtomicStore(app('cache')->store());
+
+    expect($store->add('k', 1, 60))->toBeTrue();
+    expect($store->add('k', 2, 60))->toBeFalse();
+});
+
+it('reads the credentials of the default account from services.datadis first', function () {
+    config()->set('datadis-client.accounts.default', ['username' => null, 'password' => null, 'timeout' => 30]);
+    config()->set('services.datadis', ['username' => '12345678Z', 'password' => 'from-services']);
+    fakeDatadis();
+
+    app(DatadisClient::class)->getSupplies();
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), 'login') && $r['username'] === '12345678Z' && $r['password'] === 'from-services');
+});
+
+it('does not apply services.datadis to other accounts', function () {
+    config()->set('services.datadis', ['username' => '12345678Z', 'password' => 'x']);
+
+    expect(fn () => app(Manager::class)->account('other'))->toThrow(InvalidArgumentException::class);
 });

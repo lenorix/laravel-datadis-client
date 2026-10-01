@@ -16,12 +16,21 @@ composer require lenorix/laravel-datadis-client
 php artisan vendor:publish --tag="laravel-datadis-client-config"
 ```
 
-Requires PHP 8.4 and Laravel 11, 12 or 13. Set your Datadis login in `.env`:
+Requires PHP 8.4 and Laravel 13 (`lenorix/datadis-client` needs Guzzle 8, which Laravel 11 and 12 do not allow yet). Datadis is a third-party service, so its credentials go in `config/services.php`, like any other:
+
+```php
+'datadis' => [
+    'username' => env('DATADIS_USERNAME'),
+    'password' => env('DATADIS_PASSWORD'),
+],
+```
 
 ```dotenv
 DATADIS_USERNAME=A00000000
 DATADIS_PASSWORD=your-password
 ```
+
+`services.datadis` also accepts the other account settings (`api_version`, `timezone`, `timeout`...) and wins over the default account of `config/datadis-client.php`, which keeps the same `DATADIS_*` variables as a fallback and holds extra accounts.
 
 ## Usage
 
@@ -74,6 +83,13 @@ The client holds a password and cannot be serialised: resolve it in `handle()`, 
 | `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |
 
 A repeated query fails with `RepetitionWindowException` before anything is sent.
+
+## Laravel Boost
+
+The package ships [Laravel Boost](https://laravel.com/docs/boost) resources, so your coding agent learns the client and the Datadis rules (the 24 hour query rule, hour labels, errors) when you run `php artisan boost:install` or `boost:update --discover`:
+
+- `resources/boost/guidelines/core.blade.php`: the conventions, always loaded.
+- Skills, loaded on demand: `datadis-development` (calls, results, errors), `datadis-sync` (scheduled jobs and backfills) and `datadis-testing` (`Http::fake()`).
 
 ## Testing
 

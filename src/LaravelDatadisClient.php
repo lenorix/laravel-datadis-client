@@ -41,10 +41,10 @@ class LaravelDatadisClient
     public function account(?string $name = null): DatadisClient
     {
         $name ??= (string) $this->config()->get('datadis-client.default', 'default');
-        $settings = $this->config()->get("datadis-client.accounts.{$name}");
+        $settings = $this->settings($name);
 
-        if (! is_array($settings)) {
-            throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in datadis-client.accounts.");
+        if ($settings === null) {
+            throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
         }
 
         $store = $this->store();
@@ -68,6 +68,25 @@ class LaravelDatadisClient
     public function __call(string $method, array $parameters): mixed
     {
         return $this->account()->{$method}(...$parameters);
+    }
+
+    /**
+     * The settings of an account. The credentials of the default account follow Laravel's convention
+     * for third-party services, `config/services.php` (`services.datadis`), and win over the same keys
+     * of `datadis-client.accounts.<name>`, which stay for the other settings and for extra accounts.
+     *
+     * @return array<array-key, mixed>|null
+     */
+    private function settings(string $name): ?array
+    {
+        $account = $this->config()->get("datadis-client.accounts.{$name}");
+        $service = $name === $this->config()->get('datadis-client.default', 'default') ? $this->config()->get('services.datadis') : null;
+
+        if (! is_array($account) && ! is_array($service)) {
+            return null;
+        }
+
+        return array_replace(is_array($account) ? $account : [], array_filter(is_array($service) ? $service : [], fn ($value) => $value !== null && $value !== ''));
     }
 
     private function config(): Config
