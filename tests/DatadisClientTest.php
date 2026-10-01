@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
@@ -15,6 +16,7 @@ use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
+use Psr\Log\LoggerInterface;
 
 it('binds a client built from the configuration', function () {
     expect(app(DatadisClient::class))->toBeInstanceOf(DatadisClient::class);
@@ -198,4 +200,23 @@ it('keeps services.datadis on the account named default when another one is the 
     app(DatadisClient::class)->getSupplies();
 
     Http::assertSent(fn (Request $r) => str_contains($r->url(), 'login') && $r['username'] === '12345678Z' && $r['password'] === 'other-secret');
+});
+
+it('reports a refused repeat as a warning, not an error', function () {
+    fakeDatadis();
+    $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
+    app(DatadisClient::class)->getConsumptionDataOf($supply, Month::of(2026, 7));
+
+    try {
+        app(DatadisClient::class)->getConsumptionDataOf($supply, Month::of(2026, 7));
+    } catch (RepetitionWindowException $e) {
+        $logger = Mockery::mock(LoggerInterface::class);
+        $logger->shouldReceive('warning')->once();
+        $logger->shouldNotReceive('error');
+        app()->instance(LoggerInterface::class, $logger);
+
+        app(ExceptionHandler::class)->report($e);
+    }
+
+    expect($e)->toBeInstanceOf(RepetitionWindowException::class);
 });
