@@ -1,37 +1,24 @@
 <?php
 
-namespace VendorName\Skeleton\Tests;
+namespace Lenorix\LaravelDatadisClient\Tests;
 
-use Illuminate\Database\Eloquent\Factories\Factory;
+use Lenorix\LaravelDatadisClient\LaravelDatadisClientServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
-use VendorName\Skeleton\SkeletonServiceProvider;
 
 class TestCase extends Orchestra
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'VendorName\\Skeleton\\Database\\Factories\\'.class_basename($modelName).'Factory'
-        );
-    }
-
     protected function getPackageProviders($app)
     {
         return [
-            SkeletonServiceProvider::class,
+            LaravelDatadisClientServiceProvider::class,
         ];
     }
 
     public function getEnvironmentSetUp($app)
     {
-        config()->set('database.default', 'testing');
-
-        /*
-         foreach (\Illuminate\Support\Facades\File::allFiles(__DIR__ . '/../database/migrations') as $migration) {
-            (include $migration->getRealPath())->up();
-         }
-         */
+        config()->set('cache.default', 'array');
+        config()->set('app.key', 'base64:'.base64_encode(str_repeat('k', 32)));
+        config()->set('datadis-client.accounts.default.username', '00000000T');
+        config()->set('datadis-client.accounts.default.password', 'secret');
     }
 }

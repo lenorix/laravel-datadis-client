@@ -1,103 +1,97 @@
-# :package_description
+# Datadis client for Laravel
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/:vendor_slug/:package_slug.svg?style=flat-square)](https://packagist.org/packages/:vendor_slug/:package_slug)
-[![GitHub Tests Action Status](https://github.com/spatie/package-skeleton-laravel/actions/workflows/run-tests.yml/badge.svg)](https://github.com/:vendor_slug/:package_slug/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://github.com/spatie/package-skeleton-laravel/actions/workflows/fix-php-code-style-issues.yml/badge.svg)](https://github.com/:vendor_slug/:package_slug/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/:vendor_slug/:package_slug.svg?style=flat-square)](https://packagist.org/packages/:vendor_slug/:package_slug)
-<!--delete-->
----
-This repo can be used to scaffold a Laravel package. Follow these steps to get started:
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/lenorix/laravel-datadis-client.svg?style=flat-square)](https://packagist.org/packages/lenorix/laravel-datadis-client)
+[![Total Downloads](https://img.shields.io/packagist/dt/lenorix/laravel-datadis-client.svg?style=flat-square)](https://packagist.org/packages/lenorix/laravel-datadis-client)
 
-1. Press the "Use this template" button at the top of this repo to create a new repo with the contents of this skeleton.
-2. Run "php ./configure.php" to run a script that will replace all placeholders throughout all the files.
+Laravel integration of [`lenorix/datadis-client`](https://github.com/lenorix/datadis-php-client), the client for [Datadis](https://datadis.es) (supplies, contracts, hourly and quarter-hourly consumption, maximum power, reactive energy). It wires the client to what your application already has:
 
-   To run it unattended — from a script, or by handing it to a coding agent — pass `--no-interaction`
-   (`-n`) and the answers as options. It never prompts, and exits non-zero with a message naming any
-   option it still needs:
-
-   ```bash
-   php ./configure.php -n --vendor-name="Spatie" --package-name="laravel-ray"
-   ```
-
-   Run "php ./configure.php --help" for the full list of options.
-3. Have fun creating your package.
-4. If you need help creating a package, consider picking up our <a href="https://laravelpackage.training">Laravel Package Training</a> video course.
----
-<!--/delete-->
-This is where your description should go. Limit it to a paragraph or two. Consider adding a small example.
-
-## Support us
-
-[<img src="https://github-ads.s3.eu-central-1.amazonaws.com/:package_name.jpg?t=1" width="419px" />](https://spatie.be/github-ad-click/:package_name)
-
-We invest a lot of resources into creating [best in class open source packages](https://spatie.be/open-source). You can support us by [buying one of our paid products](https://spatie.be/open-source/support-us).
-
-We highly appreciate you sending us a postcard from your hometown, mentioning which of our package(s) you are using. You'll find our address on [our contact page](https://spatie.be/about-us). We publish all received postcards on [our virtual postcard wall](https://spatie.be/open-source/postcards).
+- **HTTP**: every call goes through Laravel's `Http` handler stack, so `Http::fake()` and `Http::assertSent()` work.
+- **Cache**: the login token and the **24 hour guard** (Datadis refuses an identical query for 24 hours and counts the refused ones) live in a Laravel cache store shared by all workers. Recording a query is atomic (`Cache::add()`), so two workers never both send it.
+- **Configuration**: one or more accounts in `config/datadis-client.php`, container binding, facade and an artisan command.
 
 ## Installation
 
-You can install the package via composer:
-
 ```bash
-composer require :vendor_slug/:package_slug
+composer require lenorix/laravel-datadis-client
+php artisan vendor:publish --tag="laravel-datadis-client-config"
 ```
 
-You can publish and run the migrations with:
+Requires PHP 8.4 and Laravel 11, 12 or 13. Set your Datadis login in `.env`:
 
-```bash
-php artisan vendor:publish --tag=":package_slug-migrations"
-php artisan migrate
-```
-
-You can publish the config file with:
-
-```bash
-php artisan vendor:publish --tag=":package_slug-config"
-```
-
-This is the contents of the published config file:
-
-```php
-return [
-];
-```
-
-Optionally, you can publish the views using
-
-```bash
-php artisan vendor:publish --tag=":package_slug-views"
+```dotenv
+DATADIS_USERNAME=A00000000
+DATADIS_PASSWORD=your-password
 ```
 
 ## Usage
 
+Inject the client, or use the facade, which forwards to the default account:
+
 ```php
-$:variable = new VendorName\Skeleton();
-echo $:variable->echoPhrase('Hello, VendorName!');
+use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\DatadisClient\Time\Month;
+use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
+
+public function __invoke(DatadisClient $client)
+{
+    $supply = $client->findSupply(Cups::fromString('ES0000000000000000AA0A'));
+    $result = $client->getConsumptionDataOf($supply, Month::of(2026, 7));
+}
+
+$supplies = Datadis::getSupplies();
 ```
 
+See the [client documentation](https://github.com/lenorix/datadis-php-client#readme) for every call, the results and the errors.
+
+### Several accounts and holders
+
+```php
+Datadis::account('other')->getSupplies();
+
+$holder = Datadis::forHolder(Nif::fromString('00000000T')); // someone who authorized your account
+```
+
+Define each account under `accounts` in the configuration with the same keys as `default`.
+
+### Command
+
+```bash
+php artisan datadis:supplies [--account=other] [--holder=00000000T]
+```
+
+### Queued jobs
+
+The client holds a password and cannot be serialised: resolve it in `handle()`, never keep it in a property.
+
+## Configuration
+
+| Key | Purpose |
+|---|---|
+| `default` | Account used by the binding, the facade and the command (`DATADIS_ACCOUNT`). |
+| `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`. |
+| `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty. Use Redis, Memcached, database or DynamoDB: with `file` or `array` the guard cannot be atomic across processes. It holds the token, so protect it like a password. |
+| `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |
+
+A repeated query fails with `RepetitionWindowException` before anything is sent.
+
 ## Testing
+
+```php
+Http::fake([
+    '*/nikola-auth/tokens/login' => Http::response($token),
+    '*/api-private/api/get-supplies*' => Http::response(['supplies' => [...], 'distributorError' => []]),
+]);
+```
 
 ```bash
 composer test
 ```
 
-## Changelog
-
-Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
-
-## Contributing
-
-Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
-
-## Security Vulnerabilities
-
-Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
-
 ## Credits
 
-- [:author_name](https://github.com/:author_username)
-- [All Contributors](../../contributors)
+- [Jesus Hernandez](https://github.com/lenorix)
 
 ## License
 
-The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+The MIT License (MIT). See [License File](LICENSE.md).
