@@ -18,7 +18,6 @@ Use it when adding or changing code that reads from Datadis through `DatadisClie
 
 ## Calls
 
-@verbatim
 ```php
 $supply   = $client->findSupply(Cups::fromString($cups));            // ?Supply
 $contract = $client->getContractDetailOf($supply)->records[0] ?? null;
@@ -30,7 +29,6 @@ $client->getDistributorsWithSupplies();
 $client->listAuthorization(); $client->newAuthorization($nif); $client->cancelAuthorization($nif);
 $client->getGroups();                                                 // API v2 only
 ```
-@endverbatim
 
 Public open data (aggregated by region, tariff, sector) uses `PublicApiClient` with the same account; `apiSearchAll()` pages for you.
 

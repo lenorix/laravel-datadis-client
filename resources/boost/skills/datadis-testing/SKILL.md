@@ -13,17 +13,14 @@ Use it when writing tests for code that calls `DatadisClient`. No test may call 
 
 The package sends every call through Laravel's `Http` handler stack, so `Http::fake()`, `Http::preventStrayRequests()` and `Http::assertSent()` work. Set an account and the cache in the test environment (the `array` cache already shares the token and the guard inside one test):
 
-@verbatim
 ```php
 config()->set('services.datadis.username', '00000000T'); // a valid NIF/NIE/CIF shape
 config()->set('services.datadis.password', 'secret');
 config()->set('cache.default', 'array');
 ```
-@endverbatim
 
 ## Faking Datadis
 
-@verbatim
 ```php
 Http::preventStrayRequests();
 Http::fake([
@@ -35,7 +32,6 @@ Http::fake([
     '*/api-private/api/get-consumption-data*' => Http::response(['timeCurve' => [], 'distributorError' => []]),
 ]);
 ```
-@endverbatim
 
 - The login answers a JWT as text; any `header.payload.signature` with a numeric `exp` claim 24 h ahead works (it is not verified).
 - Data endpoints (API v2 adds a `-v2` suffix: `get-supplies-v2`, `get-consumption-data-v2`) answer `{ "<list key>": [...], "distributorError": [] }`; list keys are `supplies`, `timeCurve`, `maxPower`, ... Use a wildcard (`*`) after the endpoint name for the query string.

@@ -22,8 +22,7 @@ Datadis refuses an identical consumption, maximum power or reactive query for 24
 
 `MonthPlanner` turns a range into the requests worth making (only months Datadis serves and, given the supply, only months of its contract). One month per request is the default on purpose.
 
-@verbatim
-<code-snippet name="Sync job" lang="php">
+```php
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\NoDataException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
@@ -64,8 +63,7 @@ class SyncSupply implements ShouldQueue
         }
     }
 }
-</code-snippet>
-@endverbatim
+```
 
 ## Rules of thumb
 
