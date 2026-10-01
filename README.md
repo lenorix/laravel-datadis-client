@@ -96,13 +96,6 @@ A repeated query fails with `RepetitionWindowException` before anything is sent.
 
 **Set `DATADIS_LEDGER_KEY`.** Derived from `APP_KEY`, the secret changes whenever you rotate the application key, and the guard forgets the queries of the last 24 hours, so they can be sent (and counted) again.
 
-### Limits of `lenorix/datadis-client` 0.2.0
-
-Two protections of the client's development version are not in 0.2.0, the release this package requires. Until a newer release is out and required here:
-
-- A `401` on a guarded query (consumption, maximum power, reactive) is retried once after logging in again, which may count the query twice. Later versions never resend it.
-- A range that starts before the contract of the supply is sent, and Datadis refuses it while still counting it, instead of being refused locally. Plan ranges with `MonthPlanner::ranges(..., supply: $supply)`.
-
 ## Laravel Boost
 
 The package ships [Laravel Boost](https://laravel.com/docs/boost) resources, so your coding agent learns the client and the Datadis rules (the 24 hour query rule, hour labels, errors) when you run `php artisan boost:install` or `boost:update --discover`:
