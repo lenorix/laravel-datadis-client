@@ -273,4 +273,4 @@ Run `php artisan boost:install` and, when Boost asks which third-party guideline
 
 To contribute, read [CONTRIBUTING](.github/CONTRIBUTING.md). Report a vulnerability privately, as the [security policy](.github/SECURITY.md) explains. See the [changelog](CHANGELOG.md).
 
-Created by [Jesus Hernandez](https://github.com/jhg) and [contributors](https://github.com/lenorix/laravel-datadis-client/graphs/contributors). Released under the [MIT License](LICENSE.md).
+Created by [Jesus Hernandez](https://github.com/jhg) and [contributors](https://github.com/lenorix/laravel-datadis-client/graphs/contributors). Released under [The Unlicense](LICENSE.md), in the public domain.

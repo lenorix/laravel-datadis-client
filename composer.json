@@ -7,7 +7,7 @@
         "laravel-datadis-client"
     ],
     "homepage": "https://github.com/lenorix/laravel-datadis-client",
-    "license": "MIT",
+    "license": "Unlicense",
     "authors": [
         {
             "name": "Jesus Hernandez",
