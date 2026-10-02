@@ -1,7 +1,10 @@
 <?php
 
+use Illuminate\Cache\ArrayLock;
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\TransportException;
@@ -66,4 +69,46 @@ it('gives an import a client that cannot send, whatever the environment says', f
     // Not a login, not a data query: the transport is the one that throws ("An import never sends a request"), so nothing can reach Datadis or Http::fake().
     expect(fn () => $client->checkLogin())->toThrow(TransportException::class, 'LogicException');   // the client reports the transport's failure
     Http::assertNothingSent();
+});
+
+/** An array store that notes how long an import holds its lock and how long it waits for it. */
+class NotingLockStore extends ArrayStore
+{
+    /** @var list<array{string, int, int|null}> */
+    public static array $noted = [];
+
+    public function lock($name, $seconds = 0, $owner = null)
+    {
+        $store = $this;
+
+        return new class($store, $name, $seconds, $owner) extends ArrayLock
+        {
+            public function __construct(private readonly NotingLockStore $noting, string $name, private readonly int $held, ?string $owner)
+            {
+                parent::__construct($noting, $name, $held, $owner);
+            }
+
+            public function block($seconds, $callback = null)
+            {
+                NotingLockStore::$noted[] = [$this->name, $this->held, (int) $seconds];
+
+                return parent::block($seconds, $callback);
+            }
+        };
+    }
+}
+
+it('holds the import lock for thirty seconds and waits two for another import, as the README says', function () {
+    NotingLockStore::$noted = [];
+    Cache::extend('noting', fn () => Cache::repository(new NotingLockStore));
+    config()->set('cache.stores.noting', ['driver' => 'noting']);
+    config()->set('cache.default', 'noting');
+
+    Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour'));
+
+    expect(NotingLockStore::$noted)->toHaveCount(1);
+    [$name, $held, $waits] = NotingLockStore::$noted[0];
+    expect($held)->toBe(30);
+    expect($waits)->toBe(2);
+    expect($name)->toStartWith('datadis_import_')->not->toContain('00000000T');
 });
