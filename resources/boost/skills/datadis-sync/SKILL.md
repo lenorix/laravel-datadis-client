@@ -22,7 +22,10 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 
 ## Pattern: one planning job, one job per month
 
-A planning job decides which months are worth asking for, and one queued job per range makes the query. A worker killed in the middle then loses one month, not the whole backfill, and each job stays inside its timeout.
+A planning job decides which months are worth asking for, and one queued job per range makes the query. A worker killed in the middle then loses one month, not the whole backfill.
+
+- The **planning job** only reads (the login and the supplies list). Reads are safe to retry, so it may be retried, and nothing is dispatched until the lookup has succeeded.
+- Each **range job** makes one data query, which must never be retried by the queue. It takes the codes from the planner, so it does not list the supplies again.
 
 ```php
 use DateTimeImmutable;
@@ -39,7 +42,11 @@ class PlanSupplySync implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 1;
+    public int $tries = 3;               // only reads: safe to retry
+
+    public array $backoff = [60, 300];
+
+    public int $timeout = 900;           // a login and a supplies list, each up to 3 attempts of 120 s: see "Timeouts and queues"
 
     public function __construct(public string $cups, public int $months = 2) {}
 
@@ -53,9 +60,10 @@ class PlanSupplySync implements ShouldQueue
         $now = new DateTimeImmutable;
         $current = Month::current($now);
 
+        // Nothing above can fail after this point, so a retry of the job never dispatches twice.
         // One month each, one queued job per range: the last $months months (24 at most).
         foreach (MonthPlanner::ranges($current->addMonths(-($this->months - 1)), $current, $now, supply: $supply) as [$from, $to]) {
-            SyncSupplyRange::dispatch($this->cups, $from->format(), $to->format());
+            SyncSupplyRange::dispatch($supply->cups, $supply->distributorCode, $supply->pointType, $from->format(), $to->format());
         }
     }
 }
@@ -64,21 +72,28 @@ class SyncSupplyRange implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 1;     // a data query must not be repeated by the queue
+    public int $tries = 1;      // a data query must not be repeated by the queue
 
-    public int $timeout = 300; // more than datadis-client.accounts.*.timeout (120 s): the login and the supplies list come first
+    public int $timeout = 600;  // a login (up to 3 attempts of 120 s) and the query (120 s): see "Timeouts and queues"
 
-    public function __construct(public string $cups, public string $from, public string $to) {}
+    public function __construct(
+        public string $cups,    // as the supplies list gave it
+        public string $distributorCode,
+        public int $pointType,
+        public string $from,
+        public string $to,
+    ) {}
 
     public function handle(DatadisClient $client): void
     {
-        $supply = $client->findSupply(Cups::fromString($this->cups));
-        if (! $supply?->isQueryable()) {
-            return;
-        }
-
         try {
-            $result = $client->getConsumptionDataOf($supply, Month::fromString($this->from), Month::fromString($this->to));
+            $result = $client->getConsumptionData(
+                Cups::fromString($this->cups),
+                $this->distributorCode,
+                $this->pointType,
+                Month::fromString($this->from),
+                Month::fromString($this->to),
+            );
         } catch (NoDataException|RepetitionWindowException) {
             return; // nothing yet, or already asked today
         }
@@ -106,17 +121,21 @@ Every second day, not every day: the guard keeps a query for 24 hours and 10 min
 
 ### Timeouts and queues
 
-- Datadis is slow: a query can take tens of seconds, and each call is allowed up to `datadis-client.accounts.*.timeout` (default 120 s).
-- A job's timeout must cover what it does in sequence: the login, the supplies list and each query. Twenty-four months in one job could need almost an hour, so make one job per range.
+Datadis is slow: a call can take tens of seconds, and each one is allowed up to `datadis-client.accounts.*.timeout` (120 seconds by default). A job's timeout must cover its worst case, not its usual one.
+
+- **A read that fails over the network is retried** (`datadis-client.http.retries`, 2 retries by default), each attempt up to 120 seconds, with waits of at most 30 seconds between them: about 420 seconds in the worst case. A data query is never retried: 120 seconds at most.
+- **The range job**: a login when the token is not cached, 420 seconds at worst, plus the query, 120: 540 seconds, so `$timeout = 600`. With the token cached it takes the query alone.
+- **The planning job**: the login and the supplies list, 2 x 420 = 840 seconds at worst, so `$timeout = 900`.
 - Set the job's `$timeout` (it takes precedence over the worker's `--timeout`, which is 60 seconds by default). It needs the `pcntl` PHP extension.
-- Keep the connection's `retry_after` (90 seconds by default, in `config/queue.php`) greater than the job's timeout: Laravel says a job's timeout "should always be less than its retry after value", or the job may be attempted again before it finishes, and the query is sent twice. For `$timeout = 300`, set `retry_after` to 330 or more.
+- Keep the connection's `retry_after` (90 seconds by default, in `config/queue.php`) greater than the longest job timeout: Laravel says a job's timeout "should always be less than its retry after value", or the job may be attempted again before it finishes, and the query is sent twice. Here that is 930 seconds or more, so give the Datadis jobs a connection of their own with that `retry_after` instead of raising it for every queue (`$this->onConnection('datadis')` in their constructors).
 - Keep the worker's `--timeout` several seconds shorter than `retry_after`.
-- The job timeout does not interrupt a blocking HTTP call. The package already gives Guzzle its own timeouts (`datadis-client.accounts.*.timeout`, 120 seconds by default).
+- The job timeout does not interrupt a blocking HTTP call: the package already gives Guzzle its own timeouts. Lower `datadis-client.accounts.*.timeout` if you want smaller job timeouts.
 
 ### Retries
 
 - The package already retries the harmless reads (login, lists) after network errors and 502, 503 and 504 (`datadis-client.http.retries`).
-- Keep `$tries = 1` and no `backoff` on jobs that issue data queries. Supplies, contract detail, distributors, groups and authorization lists are safe to retry.
+- A job that only reads (the planning job: login and supplies list) may be retried by the queue too: `$tries = 3` with a `$backoff`.
+- A job that issues a data query keeps `$tries = 1` and no `$backoff`.
 - `RepetitionWindowException` is reported as a warning by default (`datadis-client.report_level`): do not turn it into an error.
 
 ### Data

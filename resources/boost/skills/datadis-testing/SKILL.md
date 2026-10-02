@@ -27,30 +27,46 @@ Two things break it:
 
 ## Faking Datadis
 
-One helper that answers every endpoint; add the bodies you need to assert on.
+Two helpers: a fake token, and one that answers every endpoint of the client (add the bodies you need to assert on).
 
 ```php
+function fakeJwt(): string
+{
+    $encode = fn (array $claims) => rtrim(strtr(base64_encode(json_encode($claims)), '+/', '-_'), '=');
+
+    // header.payload.signature, with an exp claim 24 hours ahead; the signature is never checked
+    return $encode(['alg' => 'HS512']).'.'.$encode(['exp' => time() + 86400]).'.signature';
+}
+
 function fakeDatadis(): void
 {
     $list = fn (string $key) => Http::response([$key => [], 'distributorError' => []]);
+    $text = fn (string $body) => Http::response($body, 200, ['Content-Type' => 'text/plain']);
 
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response($jwt, 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => $text(fakeJwt()),
         '*/get-supplies*' => Http::response(['supplies' => [[
             'cups' => 'ES0000000000000000AA0A', 'distributor' => 'X', 'pointType' => 5,
             'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
         ]], 'distributorError' => []]),
+        '*/get-distributors-with-supplies*' => Http::response(['distributorError' => []]),
         '*/get-contract-detail*' => $list('contract'),
         '*/get-consumption-data*' => $list('timeCurve'),
         '*/get-max-power*' => $list('maxPower'),
         '*/get-reactive-data*' => Http::response(['reactiveEnergy' => [], 'distributorError' => []]),
+        '*/get-groups*' => $list('groups'),
         '*/list-authorization*' => $list('authorizations'),
-        '*/new-authorization*' => Http::response('Authorization created', 200, ['Content-Type' => 'text/plain']),
+        '*/new-authorization*' => $text('Authorization created'),
+        '*/cancel-authorization*' => $text('Authorization cancelled'),
+        '*/partner-user-list*' => $list('users'),
+        '*/partner-delete-user*' => $text('User unlinked'),
+        '*/partner-agreement-date*' => Http::response(['partnerAgreementDate' => null]),
+        '*/api-public/api-*' => Http::response([]),   // the open data
     ]);
 }
 ```
 
-- **The login** answers a JWT as text. Any `header.payload.signature` with a numeric `exp` claim in the future works; it is not verified. A token whose `exp` is in the past is not reused.
+- **The login** answers a JWT as text (`fakeJwt()` above). Any `header.payload.signature` with a numeric `exp` claim in the future works; it is not verified. A token whose `exp` is in the past is not reused.
 - **The paths** end in `-v2` for API v2 (`get-supplies-v2`); the wildcard after the endpoint name covers it and the query string.
 - **Answer keys**: `supplies`, `contract`, `timeCurve`, `maxPower`, `reactiveEnergy`, `authorizations`, `groups`, `users`, always beside `distributorError`. The writes answer plain text.
 - **Make the supply queryable**: a CUPS as `ES` plus 16 digits plus 2 letters, a `distributorCode` and a `pointType`.
