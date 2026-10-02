@@ -41,3 +41,28 @@ it('has frontmatter that Boost can parse as YAML', function (string $path) {
     expect($frontmatter)->toHaveKeys(['name', 'description']);
     expect($frontmatter['description'])->toBeString();
 })->with($skills);
+
+it('has PHP examples that parse', function (string $path) {
+    preg_match_all('/```php\n(.*?)```|<code-snippet[^>]*>\n(.*?)<\/code-snippet>/s', file_get_contents($path), $blocks);
+    $examples = array_filter(array_merge($blocks[1], $blocks[2]));
+
+    expect($examples)->not->toBeEmpty();
+
+    foreach ($examples as $example) {
+        // An example may be a method on its own: then it parses inside a class.
+        $imports = implode("\n", preg_grep('/^use /', explode("\n", $example)));
+        $method = implode("\n", preg_grep('/^use /', explode("\n", $example), PREG_GREP_INVERT));
+
+        $parses = static function (string $code): bool {
+            try {
+                token_get_all($code, TOKEN_PARSE);
+
+                return true;
+            } catch (ParseError) {
+                return false;
+            }
+        };
+
+        expect($parses('<?php '.$example) || $parses("<?php {$imports}\nclass Example {{$method}}"))->toBeTrue("An example does not parse in {$path}:\n{$example}");
+    }
+})->with(array_merge($skills, [__DIR__.'/../resources/boost/guidelines/core.blade.php']));

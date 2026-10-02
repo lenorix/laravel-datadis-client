@@ -19,7 +19,12 @@ Use it when adding or changing code that reads from Datadis through `DatadisClie
 ## Calls
 
 ```php
-$supply   = $client->findSupply(Cups::fromString($cups));            // ?Supply
+$supply = $client->findSupply(Cups::fromString($cups));              // ?Supply: null when the account does not see it
+
+if ($supply === null || ! $supply->isQueryable()) {
+    return; // or fail: every call below needs a queryable supply
+}
+
 $contract = $client->getContractDetailOf($supply)->records[0] ?? null;
 $hourly   = $client->getConsumptionDataOf($supply, Month::of(2026, 7));
 $quarters = $client->getConsumptionDataOf($supply, $from, $to, MeasurementType::QuarterHourly);
@@ -27,8 +32,11 @@ $peaks    = $client->getMaxPowerOf($supply, $from, $to);              // one row
 $reactive = $client->getReactiveDataOf($supply, $from, $to);          // API v2 only
 $client->getDistributorsWithSupplies();
 $client->listAuthorization();                                         // read only
-// Writes: give or take away a third party's access to the supplies. Never retried; they return Datadis's answer text.
-$client->newAuthorization($nif); $client->cancelAuthorization($nif);
+// Writes. Never retried; each returns Datadis's answer text, so check it.
+$client->newAuthorization($nif);      // give a third party access to the supplies (all, or some CUPS for a period)
+$client->cancelAuthorization($nif);   // take that access away
+$client->partnerDeleteUser($nif);     // partner accounts only: unlink a user
+$client->partnerUserList(); $client->partnerAgreementDate();
 $client->getGroups();                                                 // API v2 only
 ```
 

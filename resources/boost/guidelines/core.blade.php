@@ -1,6 +1,6 @@
 ## Laravel Datadis Client
 
-This package integrates `lenorix/datadis-client` with Laravel to read electricity data from Datadis, the platform where Spanish distributors publish supply data (supplies, contracts, hourly and quarter-hourly consumption, maximum power, reactive energy). The client is plain PHP; this package binds it to Laravel's `Http`, cache and configuration.
+This package integrates `lenorix/datadis-client` with Laravel to read electricity data from Datadis, the platform where Spanish distributors publish supply data (supplies, contracts, hourly and quarter-hourly consumption, maximum power, reactive energy). The client is plain PHP; this package binds it to Laravel's cache and configuration, and sends its calls through plain Guzzle, or through Laravel's `Http` client when `datadis-client.http.stack` is `laravel` (the default in the test environment, so `Http::fake()` works).
 
 ### Conventions
 
