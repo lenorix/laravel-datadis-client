@@ -9,6 +9,8 @@ This package integrates `lenorix/datadis-client` with Laravel to read electricit
 - Method and field names are Datadis's own (`getConsumptionData()`, `consumptionKWh`, `contractedPowerkW`).
 - Energy and power values are decimal strings, never floats: add them with `Brick\Math\BigDecimal`.
 - The client reads and writes: besides the reads it manages access with `newAuthorization()`, `cancelAuthorization()`, `listAuthorization()` and `partnerDeleteUser()`. They are never retried and return Datadis's answer text, so check it.
+- Artisan: `datadis:supplies`, `datadis:contract`, `datadis:consumption`, `datadis:authorizations`, `datadis:authorize` and `datadis:authorization:cancel` (all take `--account` and `--holder`). `datadis:consumption` counts for the 24 hour rule.
+- Reads that fail with a network error or a 502, 503 or 504 are retried by the package (`datadis-client.http.retries`); data queries and writes never are: do not add your own retry around them.
 - Public open data (aggregated by region, tariff, sector) is `app(Lenorix\DatadisClient\PublicApiClient::class)` or `LaravelDatadisClient::publicApi()`.
 - Datadis refuses an identical consumption, maximum power or reactive query for 24 hours, and counts the refused ones. Never loop or retry such a query. The package guards this with a cache shared by all workers; a repeat throws `RepetitionWindowException` before anything is sent.
 - Always start from the supplies list: `findSupply(Cups)` gives the CUPS, distributor code and point type every data call needs. Use the `...Of($supply, Month)` methods.

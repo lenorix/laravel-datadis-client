@@ -70,6 +70,7 @@ class SyncSupply implements ShouldQueue
 
 ## Rules of thumb
 
+- The package already retries the harmless reads (login, lists) after network failures and 502, 503 and 504 (`datadis-client.http.retries`); never add a retry of your own around data queries.
 - Keep `tries = 1` (and no `backoff`) on jobs that issue data queries; supplies, contract detail, distributors, groups and authorization lists are safe to retry.
 - Datadis is slow (tens of seconds): job timeout above `datadis-client.accounts.*.timeout` (default 120 s).
 - The current month keeps changing for some days after it ends and has no data for the last ~2 days; do not treat a run of trailing zeros as real. Re-sync only months that can still change, and only once a day.

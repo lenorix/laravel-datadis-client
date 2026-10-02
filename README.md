@@ -94,11 +94,22 @@ use Lenorix\DatadisClient\PublicApiClient;
 app(PublicApiClient::class)->apiSearch($query);   // or Datadis::publicApi('other')
 ```
 
-### Command
+### Commands
 
 ```bash
-php artisan datadis:supplies [--account=other] [--holder=00000000T]
+php artisan datadis:supplies                          # the supplies the account sees
+php artisan datadis:contract ES0000000000000000AA0A   # access tariff, contracted power, dates
+php artisan datadis:consumption ES0000000000000000AA0A 2026-07 [--to=2026-09] [--quarter-hourly]
+php artisan datadis:authorizations                    # who can read what
+php artisan datadis:authorize 12345678Z [--cups=...] [--from=2026-01-01] [--to=2026-12-31]
+php artisan datadis:authorization:cancel 12345678Z [--cups=...]
 ```
+
+All of them take `--account=other` and `--holder=00000000T`, and fail with a message (exit code 1), without sending anything, on a malformed NIF, CUPS, month or date. `datadis:consumption` warns that Datadis refuses the same query for 24 hours and counts a refused one: the guard stops a repeat, but do not run it in a loop. `datadis:authorize` and `datadis:authorization:cancel` change data on Datadis.
+
+### Retries
+
+Network failures and `502`, `503` and `504` answers are retried (twice by default, with exponential backoff and jitter) for the calls where repeating is harmless: the login, the supplies, contract, groups and authorization lists and the other reads. Data queries (consumption, maximum power, reactive energy) and the calls that change data are never retried, because a request that may have reached Datadis uses up the 24 hour rule or changes data a second time. Set `DATADIS_HTTP_RETRIES=0` to turn it off; `http.retries` in the configuration has the delays.
 
 ### Logging and request recorders
 
@@ -140,6 +151,7 @@ The client holds a password and cannot be serialised: resolve it in `handle()`, 
 | `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`, `check_username_control` (`false` accepts a username whose NIF/NIE/CIF control character does not match). |
 | `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty, and anything that is not a store name fails. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
 | `http.stack` | `guzzle` (the default, except in the test environment) or `laravel` (`Http::fake()` works, but Laravel's events and recorders see the login password and token): `DATADIS_HTTP_STACK`. |
+| `http.retries` | `max` (0 to 10, default 2: `DATADIS_HTTP_RETRIES`), `base_delay_ms` and `max_delay_ms` of the backoff. Reads only; data queries and writes are never retried. |
 | `http.options` | Extra Guzzle options for every call (a proxy, `verify`...), merged over the package's own settings. |
 | `report_level` | Log level of a refused repeat (`RepetitionWindowException`), `warning` by default (`DATADIS_REPORT_LEVEL`); one of the PSR-3 levels, anything else fails when the client is built. It is set after your own `withExceptions()`, so it wins over a level you set there; use `null` to leave your handler alone. |
 | `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |
@@ -171,10 +183,16 @@ Http::fake([
 composer test            # 200 property cases each; DATADIS_PBT_ITERATIONS=n changes it
 composer test-pbt        # 2000 cases each
 composer test-coverage   # fails under 100 % of src/
+composer phpstan         # level max
+composer format          # Pint
 composer audit
 ```
 
 `composer.lock` is not versioned, as is usual for a library: CI resolves the newest and the lowest allowed dependencies on every run and audits them.
+
+## Security vulnerabilities and contributing
+
+Report a vulnerability privately, as the [security policy](.github/SECURITY.md) explains. To contribute, read [CONTRIBUTING](.github/CONTRIBUTING.md).
 
 ## Credits
 
