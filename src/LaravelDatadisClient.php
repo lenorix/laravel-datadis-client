@@ -3,7 +3,6 @@
 namespace Lenorix\LaravelDatadisClient;
 
 use Closure;
-use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Cache\NullStore;
 use Illuminate\Cache\Repository as CacheRepository;
@@ -15,10 +14,10 @@ use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as Http;
 use InvalidArgumentException;
-use Lenorix\DatadisClient\Data\Supply;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\DatadisConfig;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
+use Lenorix\DatadisClient\Exceptions\InvalidRequestException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
@@ -29,8 +28,8 @@ use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\MeasurementType;
 use Lenorix\DatadisClient\Values\Nif;
-use Lenorix\LaravelDatadisClient\Support\FixedTtlRepository;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
+use Lenorix\LaravelDatadisClient\Support\LaravelClock;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Client\ClientInterface;
 
@@ -54,7 +53,13 @@ class LaravelDatadisClient
      * The collaborators are taken from the container on every call, not kept: a facade holds this
      * object for the whole process, and Http::fake() swaps the HTTP factory after it was built.
      */
-    public function __construct(private readonly Application $app) {}
+    private readonly ClockInterface $clock;
+
+    public function __construct(private readonly Application $app)
+    {
+        // The application's time (`now()`, `travelTo()`), not the system's: the guard, the daily range and the token follow it.
+        $this->clock = new LaravelClock;
+    }
 
     /**
      * A client for an account of `datadis-client.accounts`; the default one when none is named.
@@ -78,6 +83,7 @@ class LaravelDatadisClient
             http: $this->http($settings),
             tokenCache: $this->store(),
             ledger: $this->ledger(),
+            clock: $this->clock,
         );
     }
 
@@ -126,18 +132,9 @@ class LaravelDatadisClient
         ?DateTimeInterface $at = null,
         ?string $account = null,
     ): bool {
-        if (! Supply::isValidPointType($pointType)) {
-            throw new InvalidArgumentException('The point type must be a whole number from 1 to 5.');
-        }
-
-        $username = $this->username($account);
-
-        return $this->remember($username, $at, $this->monthQuery($cups, $distributorCode, $startDate, $endDate) + [
-            'measurementType' => $measurementType->value,
-            'pointType' => $pointType,
-            // As the client sends it: the account's own NIF is omitted.
-            'authorizedNif' => $authorizedNif === null || $authorizedNif->value() === $username ? null : $authorizedNif->value(),
-        ]);
+        return $this->exclusively($account, fn (DatadisClient $client): bool => $client->rememberConsumptionData(
+            $at ?? $this->clock->now(), $cups, $distributorCode, $pointType, $startDate, $endDate, $measurementType, $authorizedNif,
+        ));
     }
 
     /**
@@ -146,10 +143,9 @@ class LaravelDatadisClient
      *
      * @return bool whether it was recorded
      *
-     * @throws InvalidArgumentException when a value is not valid, the range is reversed, `$at` is more than ten minutes in the
-     *                                  future or the account is not configured
-     * @throws ConfigurationException when the cache repository is not a Laravel one, which cannot be given a lifetime
-     * @throws LedgerUnavailableException when the guard's store fails, or another import of the same query does not finish
+     * @throws InvalidArgumentException when the account is not configured
+     * @throws InvalidRequestException when a value is not valid, the range is reversed or `$at` is more than ten minutes in the future
+     * @throws LedgerUnavailableException when the guard's store fails, or another import does not finish
      */
     public function rememberMaxPower(
         Cups $cups,
@@ -159,7 +155,9 @@ class LaravelDatadisClient
         ?DateTimeInterface $at = null,
         ?string $account = null,
     ): bool {
-        return $this->remember($this->username($account), $at, $this->monthQuery($cups, $distributorCode, $startDate, $endDate));
+        return $this->exclusively($account, fn (DatadisClient $client): bool => $client->rememberMaxPower(
+            $at ?? $this->clock->now(), $cups, $distributorCode, $startDate, $endDate,
+        ));
     }
 
     /**
@@ -168,10 +166,9 @@ class LaravelDatadisClient
      *
      * @return bool whether it was recorded
      *
-     * @throws InvalidArgumentException when a value is not valid, the range is reversed, `$at` is more than ten minutes in the
-     *                                  future or the account is not configured
-     * @throws ConfigurationException when the cache repository is not a Laravel one, which cannot be given a lifetime
-     * @throws LedgerUnavailableException when the guard's store fails, or another import of the same query does not finish
+     * @throws InvalidArgumentException when the account is not configured
+     * @throws InvalidRequestException when a value is not valid, the range is reversed or `$at` is more than ten minutes in the future
+     * @throws LedgerUnavailableException when the guard's store fails, or another import does not finish
      */
     public function rememberReactive(
         Cups $cups,
@@ -181,155 +178,59 @@ class LaravelDatadisClient
         ?DateTimeInterface $at = null,
         ?string $account = null,
     ): bool {
-        return $this->rememberMaxPower($cups, $distributorCode, $startDate, $endDate, $at, $account);
+        return $this->exclusively($account, fn (DatadisClient $client): bool => $client->rememberReactiveData(
+            $at ?? $this->clock->now(), $cups, $distributorCode, $startDate, $endDate,
+        ));
     }
 
     /**
-     * @return array<string, string>
-     *
-     * @throws InvalidArgumentException when the distributor code is not valid
-     */
-    private function monthQuery(Cups $cups, string $distributorCode, Month $startDate, ?Month $endDate): array
-    {
-        if (! Supply::isValidDistributorCode($distributorCode)) {
-            throw new InvalidArgumentException('The distributor code must be 1 to 10 letters, digits, dashes or underscores.');
-        }
-
-        if ($endDate !== null && $startDate->isAfter($endDate)) {
-            throw new InvalidArgumentException('The first month must not be after the last one.');
-        }
-
-        return [
-            'cups' => $cups->value(),
-            'distributorCode' => $distributorCode,
-            'startDate' => $startDate->format(),
-            'endDate' => ($endDate ?? $startDate)->format(),
-        ];
-    }
-
-    /**
-     * @param  array<string, string|int|null>  $query  the query as the client sends it
-     */
-    private function remember(string $username, ?DateTimeInterface $at, array $query): bool
-    {
-        $sentAt = DateTimeImmutable::createFromInterface($at ?? new DateTimeImmutable);
-        $age = time() - $sentAt->getTimestamp();
-
-        if ($age < -RequestLedger::CLOCK_TOLERANCE_SECONDS) {
-            throw new InvalidArgumentException('A query cannot have been sent in the future.');
-        }
-
-        if ($age >= RequestLedger::WINDOW_SECONDS) {
-            return false;   // out of the window: nothing to protect
-        }
-
-        // The guard must hold the newest attempt of the history, whatever order it is given in: that is the one
-        // whose window ends last. Each entry lives for what is left of its own window, which is also the time the
-        // guard reads from it (a longer life than its time would make the guard, which treats a held key with an
-        // expired time as sent now, block the query for hours after Datadis would take it).
-        $then = new class($sentAt) implements ClockInterface
-        {
-            public function __construct(private readonly DateTimeImmutable $at) {}
-
-            public function now(): DateTimeImmutable
-            {
-                return $this->at;
-            }
-        };
-        // At least one second, since the age is below the window; a time a few minutes ahead (a skewed clock, within
-        // the guard's own tolerance) lives that much longer than the window.
-        $remaining = RequestLedger::WINDOW_SECONDS - $age;
-        $guard = $this->ledger();
-        $remembered = $this->ledger($then, $remaining);
-
-        return $this->exclusively($username, $query, function () use ($guard, $remembered, $username, $query, $sentAt): bool {
-            $known = $guard->lastAttempt($username, $query);
-
-            if ($known !== null && $known->getTimestamp() >= $sentAt->getTimestamp()) {
-                return false;   // the guard already holds this attempt, or a newer one
-            }
-
-            // A free key is taken in one step, so a worker that sends now cannot slip in between.
-            if ($known === null && $remembered->claim($username, $query) === null) {
-                return true;
-            }
-
-            // The key is held: by an older attempt, by an entry whose time has expired, or by a worker that has just sent.
-            $known = $guard->lastAttempt($username, $query);
-
-            if ($known !== null && $known->getTimestamp() >= $sentAt->getTimestamp()) {
-                return false;
-            }
-
-            $remembered->record($username, $query);   // overwrite it with this attempt, the newer one
-
-            return true;
-        });
-    }
-
-    /**
-     * Runs the import of one attempt with nobody else importing the same query: two imports that both read the
-     * held attempt before either writes would leave the older time, since the overwrite is not a compare and set.
+     * Runs an import with nobody else importing for the account: the ledger keeps the newest attempt of a query, but
+     * two imports that both read the held attempt before either writes would leave the older time, since the
+     * overwrite is not a compare and set. One lock for the account, named from a keyed hash, never from the NIF.
      * A store without locks cannot serialise them: then only one process may import.
      *
      * @template T
      *
-     * @param  array<string, string|int|null>  $query
-     * @param  Closure(): T  $import
+     * @param  Closure(DatadisClient): T  $import
      * @return T
      *
-     * @throws LedgerUnavailableException when another import of the same query does not finish
+     * @throws LedgerUnavailableException when another import of the account does not finish
      */
-    private function exclusively(string $username, array $query, Closure $import): mixed
+    private function exclusively(?string $account, Closure $import): mixed
     {
+        $client = $this->account($account);
         $store = $this->store();
         $provider = $store instanceof CacheRepository ? $store->getStore() : null;
 
         if (! $provider instanceof LockProvider) {
-            return $import();
+            return $import($client);
         }
 
-        $name = 'datadis_import_'.substr((new RequestFingerprinter($this->ledgerKey()))->fingerprint($username, $query), 0, 40);
-
         try {
-            return $provider->lock($name, 30)->block(2, $import);
+            return $provider->lock($this->importLockName($this->username($account)), 30)->block(2, fn () => $import($client));
         } catch (LockTimeoutException $e) {
-            throw new LedgerUnavailableException('Another import of the same query did not finish: import the history from one process.', previous: $e);
+            throw new LedgerUnavailableException('Another import did not finish: import the history from one process.', previous: $e);
         }
     }
 
-    /**
-     * @param  int|null  $ttlSeconds  how long a new entry lives, when it is not the whole window
-     */
-    private function ledger(?ClockInterface $clock = null, ?int $ttlSeconds = null): RequestLedger
+    private function importLockName(string $username): string
     {
-        $store = $this->store();
+        return 'datadis_import_'.substr(hash_hmac('sha256', $username, $this->ledgerKey()), 0, 40);
+    }
 
-        if ($ttlSeconds !== null) {
-            // Without the repository's store the lifetime cannot be set: the entry would live a whole window and
-            // block the query for hours after Datadis takes it.
-            if (! $store instanceof CacheRepository) {
-                throw new ConfigurationException('An earlier attempt can only be remembered on a Laravel cache repository, and the default cache store gives '.$store::class.'.');
-            }
-
-            $store = new FixedTtlRepository($store->getStore(), $ttlSeconds);
-        }
-
+    private function ledger(): RequestLedger
+    {
         return new RequestLedger(
-            $store,
+            new LaravelAtomicStore($this->store()),
             new RequestFingerprinter($this->ledgerKey()),
-            $clock,
-            atomic: new LaravelAtomicStore($store, $ttlSeconds),
+            $this->clock,
         );
     }
 
-    /** The username the guard keys its entries on: the account's, trimmed and in capitals. */
+    /** The username the guard keys its entries on: the account's, trimmed and in capitals (the account is known to exist). */
     private function username(?string $name): string
     {
-        $settings = $this->settings($name ??= $this->defaultAccount())
-            ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
-
-        return DatadisConfig::fromArray($settings)->username();
+        return DatadisConfig::fromArray($this->settings($name ?? $this->defaultAccount()) ?? [])->username();
     }
 
     /**

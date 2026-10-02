@@ -3,6 +3,8 @@
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository;
 use Illuminate\Filesystem\Filesystem;
+use Lenorix\DatadisClient\Guard\AtomicLedgerStore;
+use Lenorix\DatadisClient\Guard\Psr16LedgerStore;
 use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
@@ -65,10 +67,33 @@ it('lets one worker send when every worker read before any wrote, only with the 
     $sends = 0;
 
     for ($worker = 0; $worker < 6; $worker++) {
+        // What every worker reads is a miss; the atomic one still adds to the shared store.
         $ledger = new RequestLedger(
-            blindCache($shared),
+            $atomic ? new class(new LaravelAtomicStore($shared)) implements AtomicLedgerStore
+            {
+                public function __construct(private readonly LaravelAtomicStore $shared) {}
+
+                public function get(string $key): mixed
+                {
+                    return null;
+                }
+
+                public function set(string $key, int $value, int $ttlSeconds): bool
+                {
+                    return $this->shared->set($key, $value, $ttlSeconds);
+                }
+
+                public function delete(string $key): bool
+                {
+                    return $this->shared->delete($key);
+                }
+
+                public function add(string $key, int $value, int $ttlSeconds): bool
+                {
+                    return $this->shared->add($key, $value, $ttlSeconds);
+                }
+            } : new Psr16LedgerStore(blindCache($shared)),
             new RequestFingerprinter(str_repeat('k', 32)),
-            atomic: $atomic ? new LaravelAtomicStore($shared) : null,
         );
 
         if ($ledger->claim('00000000T', ['startDate' => '2026/07']) === null) {

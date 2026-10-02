@@ -435,3 +435,19 @@ it('survives an output that formats each line once before writing it', function 
     expect($bad)->toBe(1);
     expect($message)->toContain('<fg=foo>');
 });
+
+it('reads the contract of a supply listed without a point type, which only consumption needs', function () {
+    fakeForCommands([
+        '*/get-supplies*' => Http::response(['supplies' => [[
+            'cups' => CUPS, 'distributor' => 'X', 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
+        ]], 'distributorError' => []]),
+    ]);
+
+    [$contract] = runCommand('datadis:contract '.CUPS);
+    [$consumption] = runCommand('datadis:consumption '.CUPS.' '.monthsAgo(2)->format());
+
+    expect($contract)->toBe(0);
+    expect($consumption)->toBe(1);
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-contract-detail')))->toHaveCount(1);
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-consumption-data')))->toHaveCount(0);
+});

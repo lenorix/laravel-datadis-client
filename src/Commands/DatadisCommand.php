@@ -3,7 +3,6 @@
 namespace Lenorix\LaravelDatadisClient\Commands;
 
 use DateTimeImmutable;
-use DateTimeZone;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Support\Arrayable;
 use InvalidArgumentException;
@@ -130,15 +129,16 @@ abstract class DatadisCommand extends Command
     }
 
     /**
-     * The supply of a CUPS, which must be one the account can query.
+     * The supply of a CUPS, which must be one the account can query (with a point type, when the call needs it).
      *
      * @throws InvalidArgumentException when the account has no such supply, or its codes are unusable
      */
-    protected function supply(DatadisClient $client, Cups $cups): Supply
+    protected function supply(DatadisClient $client, Cups $cups, bool $needsPointType = false): Supply
     {
         $supply = $client->findSupply($cups);
 
-        if ($supply === null || ! $supply->isQueryable()) {
+        // Only consumption takes the point type: the contract, the maximum power and the reactive energy do not.
+        if ($supply === null || ! Supply::isValidDistributorCode($supply->distributorCode) || ($needsPointType && ! Supply::isValidPointType($supply->pointType))) {
             throw new InvalidArgumentException('This account cannot see that supply, or Datadis gave no usable codes for it.');
         }
 
@@ -167,26 +167,6 @@ abstract class DatadisCommand extends Command
     protected function month(mixed $value): Month
     {
         return Month::fromString(str_replace('-', '/', is_string($value) ? $value : ''));
-    }
-
-    /**
-     * The checks the client makes before sending, made before the login too.
-     *
-     * @throws InvalidArgumentException when the range is reversed or outside the months Datadis serves
-     */
-    protected function assertRange(Month $from, Month $to): void
-    {
-        if ($from->isAfter($to)) {
-            throw new InvalidArgumentException('The first month must not be after the last one.');
-        }
-
-        $now = new DateTimeImmutable('now', new DateTimeZone(Month::SERVICE_TIME_ZONE));
-
-        foreach ([$from, $to] as $month) {
-            if (! $month->isWithinHistory($now)) {
-                throw new InvalidArgumentException('Datadis only serves the last '.Month::HISTORY_MONTHS." months up to the current one; {$month->format()} is outside that window.");
-            }
-        }
     }
 
     /**

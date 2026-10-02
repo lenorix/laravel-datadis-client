@@ -4,7 +4,6 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
-use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
@@ -15,13 +14,13 @@ function fakeToken(): string
 {
     $encode = fn (string $json) => rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
 
-    return $encode('{"alg":"HS512"}').'.'.$encode(json_encode(['sub' => 'a', 'iat' => time(), 'exp' => time() + 86400])).'.sig';
+    return $encode('{"alg":"HS512"}').'.'.$encode(json_encode(['sub' => 'a', 'iat' => now()->timestamp, 'exp' => now()->addDay()->timestamp])).'.sig';
 }
 
 function fakeDatadis(): void
 {
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => fn () => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
         '*/api-private/api/get-supplies*' => Http::response(['supplies' => [[
             'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2',
             'validDateFrom' => '2020/01/01', 'validDateTo' => '', 'postalCode' => '28001',
@@ -71,7 +70,7 @@ function fakeEverything(): void
     $text = fn (string $body) => Http::response($body, 200, ['Content-Type' => 'text/plain']);
 
     Http::fake([
-        '*/nikola-auth/tokens/login' => $text(fakeToken()),
+        '*/nikola-auth/tokens/login' => fn () => $text(fakeToken()),
         '*/get-supplies*' => Http::response(['supplies' => [[
             'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
         ]], 'distributorError' => []]),
@@ -111,11 +110,10 @@ function heldTime(Closure $month): ?int
     return $ledger->lastAttempt('00000000T', ['cups' => CUPS, 'distributorCode' => '2', 'startDate' => $month()->format(), 'endDate' => $month()->format(), 'authorizedNif' => null])?->getTimestamp();
 }
 
-/** The key of the lock an import takes for a maximum power query of the default account. */
-function importLockName(Closure $month): string
+/** The key of the lock an import takes for the default account: a keyed hash of its username, never the NIF. */
+function importLockName(): string
 {
     $manager = app(Manager::class);
-    $fingerprinter = new RequestFingerprinter((fn () => $this->ledgerKey())->call($manager));
 
-    return 'datadis_import_'.substr($fingerprinter->fingerprint('00000000T', ['cups' => CUPS, 'distributorCode' => '2', 'startDate' => $month()->format(), 'endDate' => $month()->format()]), 0, 40);
+    return 'datadis_import_'.substr(hash_hmac('sha256', '00000000T', (fn () => $this->ledgerKey())->call($manager)), 0, 40);
 }

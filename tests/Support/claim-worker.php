@@ -21,7 +21,7 @@ require __DIR__.'/../../vendor/autoload.php';
 [, $directory, $barrier, $secret] = $argv;
 
 $cache = new Repository(new FileStore(new Filesystem, $directory));
-$ledger = new RequestLedger($cache, new RequestFingerprinter($secret), atomic: new LaravelAtomicStore($cache));
+$ledger = new RequestLedger(new LaravelAtomicStore($cache), new RequestFingerprinter($secret));
 
 $deadline = microtime(true) + 10;
 while (! is_file($barrier) && microtime(true) < $deadline) {

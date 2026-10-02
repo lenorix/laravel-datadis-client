@@ -2,13 +2,11 @@
 
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\FileStore;
-use Illuminate\Contracts\Cache\Factory;
-use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Cache\Store;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
 use Lenorix\DatadisClient\DatadisClient;
-use Lenorix\DatadisClient\Exceptions\ConfigurationException;
+use Lenorix\DatadisClient\Exceptions\InvalidRequestException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Guard\RequestLedger;
@@ -128,13 +126,13 @@ it('keys the entries on the account it is given', function () {
     expect(fn () => $other->getMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2)))->toThrow(RepetitionWindowException::class);
 });
 
-it('refuses what cannot be remembered', function (Closure $call, string $message) {
-    expect($call)->toThrow(InvalidArgumentException::class, $message);
+it('refuses what cannot be remembered', function (Closure $call, string $exception, string $message) {
+    expect($call)->toThrow($exception, $message);
 })->with([
-    'a point type out of range' => [fn () => Datadis::rememberConsumption(Cups::fromString(CUPS), '2', 9, monthsAgo(2)), 'point type'],
-    'a bad distributor code' => [fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), 'not a code!', monthsAgo(2)), 'distributor code'],
-    'a time in the future' => [fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('+2 hours')), 'future'],
-    'an account that is not configured' => [fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), account: 'missing'), 'not configured'],
+    'a point type out of range' => [fn () => Datadis::rememberConsumption(Cups::fromString(CUPS), '2', 9, monthsAgo(2)), InvalidRequestException::class, 'point type'],
+    'a bad distributor code' => [fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), 'not a code!', monthsAgo(2)), InvalidRequestException::class, 'distributor code'],
+    'a time in the future' => [fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('+2 hours')), InvalidRequestException::class, 'future'],
+    'an account that is not configured' => [fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), account: 'missing'), InvalidArgumentException::class, 'not configured'],
 ]);
 
 /** An array store that notes the lifetime each key was stored with (Laravel's add() on it is a get and a put). */
@@ -259,21 +257,24 @@ it('does not take back a newer attempt that appeared while the history was being
     expect(abs(heldTime(fn () => monthsAgo(2)) - (time() - 3600)))->toBeLessThanOrEqual(5);
 });
 
-it('takes a lock per query while it imports, so two imports cannot leave the older time', function () {
-    $month = fn () => monthsAgo(2);
+it('takes a lock per account while it imports, so two imports cannot leave the older time', function () {
+    config()->set('datadis-client.accounts.other', ['username' => '12345678Z', 'password' => 'x']);
 
-    // Nobody else imports this query: it goes through, and the lock is free again afterwards.
-    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', $month(), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
-    $lock = Cache::lock(importLockName($month), 5);
+    // Nobody else imports for this account: it goes through, and the lock is free again afterwards.
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
+    $lock = Cache::lock(importLockName(), 5);
     expect($lock->get())->toBeTrue();
 
-    // Another import of the same query holds it: this one waits, and gives up with a clear error.
-    expect(fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', $month(), at: new DateTimeImmutable('-2 hours')))
+    // Another import of the account holds it: this one waits, and gives up with a clear error.
+    expect(fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-2 hours')))
         ->toThrow(LedgerUnavailableException::class, 'import the history from one process');
     $lock->release();
 
-    // Another query is not blocked by that lock.
-    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(3), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
+    // Another account is not blocked by that lock.
+    $lock = Cache::lock(importLockName(), 5);
+    $lock->get();
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(3), at: new DateTimeImmutable('-1 hour'), account: 'other'))->toBeTrue();
+    $lock->release();
 });
 
 /** A store that cannot lock: only the Store contract, kept in an array. */
@@ -364,15 +365,6 @@ it('imports on a store that cannot lock, which then needs one process', function
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-2 hours')))->toBeFalse();
 });
 
-it('refuses to remember on a cache repository it cannot give a lifetime to', function () {
-    $factory = Mockery::mock(Factory::class);
-    $factory->shouldReceive('store')->andReturn(Mockery::mock(Repository::class));
-    app()->instance(Factory::class, $factory);
-
-    expect(fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2)))
-        ->toThrow(ConfigurationException::class, 'Laravel cache repository');
-});
-
 it('lives longer than the window for a time a little ahead, so it never expires before its own window', function () {
     TtlSpyStore::$ttls = [];
     Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
@@ -389,7 +381,7 @@ it('takes the edges of the window and of the clock tolerance as the guard does',
     $call = fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable("-{$secondsAgo} seconds"));
 
     if ($expected === 'throws') {
-        expect($call)->toThrow(InvalidArgumentException::class, 'future');
+        expect($call)->toThrow(InvalidRequestException::class, 'future');
 
         return;
     }
@@ -486,7 +478,7 @@ it('works on a file store, through its own add(), for both orders of a history',
 
 it('refuses a reversed range when it remembers', function () {
     expect(fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(1), monthsAgo(3)))
-        ->toThrow(InvalidArgumentException::class, 'must not be after');
+        ->toThrow(InvalidRequestException::class, 'must not be after');
 });
 
 it('leaves a held attempt of the same time alone when it only finds it while taking the key', function () {

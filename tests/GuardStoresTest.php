@@ -10,6 +10,7 @@ use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
+use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
 
 /**
  * The guard and the import on the stores a real application shares between workers: the array store (one
@@ -87,11 +88,11 @@ it('makes the client refuse a remembered query and take a free one once, on ever
     expect(guardedRequests())->toBe(1);
 })->with(['array', 'file', 'database']);
 
-it('takes a lock per query while it imports, on the stores that can lock', function (string $driver) {
+it('takes a lock per account while it imports, on the stores that can lock', function (string $driver) {
     useGuardStore($driver);
     $month = fn () => monthsAgo(2);
 
-    $lock = Cache::store('guard')->lock(importLockName($month), 5);
+    $lock = Cache::store('guard')->lock(importLockName(), 5);
     expect($lock->get())->toBeTrue();
 
     expect(fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', $month(), at: new DateTimeImmutable('-1 hour')))
@@ -99,4 +100,27 @@ it('takes a lock per query while it imports, on the stores that can lock', funct
 
     $lock->release();
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', $month(), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
+})->with(['array', 'file', 'database']);
+
+it('is a ledger store on every cache store: get, set, delete of a missing key, and add over an expired key', function (string $driver) {
+    useGuardStore($driver);
+    $store = new LaravelAtomicStore(Cache::store('guard'));
+
+    expect($store->get('datadis_query_a'))->toBeNull();
+    expect($store->delete('datadis_query_a'))->toBeTrue();            // a key that is not there counts as removed
+    expect($store->add('datadis_query_a', 100, 60))->toBeTrue();
+    expect($store->add('datadis_query_a', 200, 60))->toBeFalse();     // held
+    expect((int) $store->get('datadis_query_a'))->toBe(100);
+    expect($store->set('datadis_query_a', 300, 60))->toBeTrue();      // replaces
+    expect((int) $store->get('datadis_query_a'))->toBe(300);
+    expect($store->delete('datadis_query_a'))->toBeTrue();
+    expect($store->get('datadis_query_a'))->toBeNull();
+
+    // An expired key is absent for add().
+    $this->travelTo(now());
+    expect($store->add('datadis_query_b', 1, 5))->toBeTrue();
+    $this->travelTo(now()->addSeconds(6));
+    expect($store->add('datadis_query_b', 2, 5))->toBeTrue();
+    expect((int) $store->get('datadis_query_b'))->toBe(2);
+    $this->travelBack();
 })->with(['array', 'file', 'database']);

@@ -3,21 +3,34 @@
 namespace Lenorix\LaravelDatadisClient\Support;
 
 use Illuminate\Contracts\Cache\Repository;
-use Lenorix\DatadisClient\Guard\AtomicStore;
+use Lenorix\DatadisClient\Guard\AtomicLedgerStore;
 
 /**
- * Lets the 24 hour guard record a query only if absent, with the add() of a Laravel cache store.
+ * The store of the 24 hour guard on a Laravel cache store: reads, writes and, with the add() of the store, records a
+ * query only if absent, so checking and recording are one step and two workers cannot both send it.
  */
-final class LaravelAtomicStore implements AtomicStore
+final class LaravelAtomicStore implements AtomicLedgerStore
 {
-    /**
-     * @param  int|null  $ttlSeconds  a lifetime that replaces the one the guard asks for: for an attempt that was
-     *                                made earlier, only what is left of its window
-     */
-    public function __construct(private readonly Repository $cache, private readonly ?int $ttlSeconds = null) {}
+    public function __construct(private readonly Repository $cache) {}
 
-    public function add(string $key, mixed $value, int $ttlSeconds): bool
+    public function get(string $key): mixed
     {
-        return $this->cache->add($key, $value, $this->ttlSeconds ?? $ttlSeconds);
+        return $this->cache->get($key);
+    }
+
+    public function set(string $key, int $value, int $ttlSeconds): bool
+    {
+        return $this->cache->put($key, $value, $ttlSeconds);
+    }
+
+    public function delete(string $key): bool
+    {
+        // A key that is not there counts as removed, and some stores answer false for it.
+        return $this->cache->forget($key) || ! $this->cache->has($key);
+    }
+
+    public function add(string $key, int $value, int $ttlSeconds): bool
+    {
+        return $this->cache->add($key, $value, $ttlSeconds);
     }
 }
