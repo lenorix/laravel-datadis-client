@@ -25,6 +25,8 @@ class ConsumptionCommand extends DatadisCommand
         $to = $this->option('to');
         $to = is_string($to) && $to !== '' ? $this->month($to) : null;
 
+        $this->assertRange($from, $to ?? $from);
+
         $supply = $this->supply($client, $cups);
 
         $this->warn('Datadis refuses this same query for 24 hours, and counts a refused one: do not run it twice.');

@@ -138,6 +138,21 @@ it('refuses a bad last month or a bad CUPS before sending anything', function (s
     'a bad holder' => 'datadis:contract '.CUPS.' --holder=nope',
 ]);
 
+it('refuses a reversed, a future or a too old range before sending anything', function (string $range) {
+    fakeForCommands();
+
+    [$code, $output] = runCommand('datadis:consumption '.CUPS.' '.$range);
+
+    expect($code)->toBe(1);
+    expect($output)->not->toBe('');
+    expect(Http::recorded())->toHaveCount(0);
+})->with([
+    'reversed' => monthsAgo(1)->format().' --to='.monthsAgo(3)->format(),
+    'in the future' => '2999-01',
+    'too old' => '2001-01',
+    'ends in the future' => monthsAgo(2)->format().' --to=2999-01',
+]);
+
 it('fails the second time the same consumption is read, without sending it', function () {
     fakeForCommands();
     $month = monthsAgo()->format();

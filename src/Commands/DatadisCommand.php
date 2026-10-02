@@ -3,6 +3,7 @@
 namespace Lenorix\LaravelDatadisClient\Commands;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
 use Lenorix\DatadisClient\Data\Supply;
@@ -80,6 +81,26 @@ abstract class DatadisCommand extends Command
     protected function month(mixed $value): Month
     {
         return Month::fromString(str_replace('-', '/', is_string($value) ? $value : ''));
+    }
+
+    /**
+     * The checks the client makes before sending, made before the login too.
+     *
+     * @throws InvalidArgumentException when the range is reversed or outside the months Datadis serves
+     */
+    protected function assertRange(Month $from, Month $to): void
+    {
+        if ($from->isAfter($to)) {
+            throw new InvalidArgumentException('The first month must not be after the last one.');
+        }
+
+        $now = new DateTimeImmutable('now', new DateTimeZone(Month::SERVICE_TIME_ZONE));
+
+        foreach ([$from, $to] as $month) {
+            if (! $month->isWithinHistory($now)) {
+                throw new InvalidArgumentException('Datadis only serves the last '.Month::HISTORY_MONTHS." months up to the current one; {$month->format()} is outside that window.");
+            }
+        }
     }
 
     /**

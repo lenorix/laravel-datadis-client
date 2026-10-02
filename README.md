@@ -159,7 +159,7 @@ php artisan datadis:authorize 12345678Z --cups=ES0000000000000000AA0A --from=202
 php artisan datadis:authorization:cancel 12345678Z
 ```
 
-All of them take `--account=second` and `--holder=12345678Z`. A malformed NIF, CUPS, month or date fails with a message and sends nothing.
+All of them take `--account=second` and `--holder=12345678Z`. A malformed NIF, CUPS, month or date, and a month range Datadis does not serve, fail with a message and send nothing.
 
 ## What to know before production
 
