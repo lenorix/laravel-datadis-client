@@ -123,7 +123,9 @@ class LaravelDatadisClient
     }
 
     /**
-     * The package's Guzzle settings, by default on Laravel's handler stack so Http::fake() and Http::assertSent() see every call.
+     * The package's Guzzle settings, on plain Guzzle by default so Laravel's events and recorders never see the login
+     * password and the token, or on Laravel's handler stack (`http.stack` = `laravel`, the default in the test environment)
+     * so Http::fake() and Http::assertSent() see every call.
      *
      * @param  array<array-key, mixed>  $settings
      */

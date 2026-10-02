@@ -5,7 +5,7 @@
 
 Laravel integration of [`lenorix/datadis-client`](https://github.com/lenorix/datadis-php-client), the client for [Datadis](https://datadis.es) (supplies, contracts, hourly and quarter-hourly consumption, maximum power, reactive energy). It wires the client to what your application already has:
 
-- **HTTP**: every call goes through Laravel's `Http` handler stack, so `Http::fake()` and `Http::assertSent()` work.
+- **HTTP**: plain Guzzle with the package's settings, so Laravel's events and recorders never see your Datadis password and token. In the test environment the calls go through Laravel's `Http` handler stack instead, so `Http::fake()` and `Http::assertSent()` work (see [Security](#security)).
 - **Cache**: the login token and the **24 hour guard** (Datadis refuses an identical query for 24 hours and counts the refused ones) live in a Laravel cache store shared by all workers. Recording a query is atomic (`Cache::add()`), so two workers never both send it.
 - **Configuration**: one or more accounts in `config/datadis-client.php`, container binding, facade and an artisan command.
 
@@ -137,6 +137,8 @@ The package ships [Laravel Boost](https://laravel.com/docs/boost) resources, so 
 
 ## Testing
 
+In the test environment (`APP_ENV=testing`) the calls go through Laravel's `Http` client, so you can fake Datadis. Elsewhere the default stack is plain Guzzle: set `DATADIS_HTTP_STACK=laravel`, or give it your own handler in `datadis-client.http.options.handler`.
+
 ```php
 Http::preventStrayRequests();   // a URL that stops matching must fail, not reach Datadis
 Http::fake([
@@ -146,8 +148,13 @@ Http::fake([
 ```
 
 ```bash
-composer test
+composer test            # 200 property cases each; DATADIS_PBT_ITERATIONS=n changes it
+composer test-pbt        # 2000 cases each
+composer test-coverage   # fails under 100 % of src/
+composer audit
 ```
+
+`composer.lock` is not versioned, as is usual for a library: CI resolves the newest and the lowest allowed dependencies on every run and audits them.
 
 ## Credits
 

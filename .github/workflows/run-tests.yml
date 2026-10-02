@@ -85,6 +85,12 @@ jobs:
       - name: Install dependencies
         run: composer update --prefer-stable --prefer-dist --no-interaction
 
+      - name: Audit the dependencies
+        run: composer audit
+
+      - name: Property tests, long run
+        run: DATADIS_PBT_ITERATIONS=1000 vendor/bin/pest tests/Property
+
       - name: Check the coverage
         run: vendor/bin/pest --coverage --min=100 --coverage-clover=build/coverage.xml
 

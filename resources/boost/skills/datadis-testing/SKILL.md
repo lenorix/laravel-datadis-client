@@ -11,7 +11,7 @@ Use it when writing tests for code that calls `DatadisClient`. No test may call 
 
 ## Setup
 
-The package sends every call through Laravel's `Http` handler stack, so `Http::fake()`, `Http::preventStrayRequests()` and `Http::assertSent()` work. Set an account and the cache in the test environment (the `array` cache already shares the token and the guard inside one test):
+In the test environment (`APP_ENV=testing`) the package sends every call through Laravel's `Http` handler stack, so `Http::fake()`, `Http::preventStrayRequests()` and `Http::assertSent()` work. Elsewhere the default is plain Guzzle and `Http::fake()` does not apply (see below). Set an account and the cache in the test environment (the `array` cache already shares the token and the guard inside one test):
 
 ```php
 config()->set('services.datadis.username', '00000000T'); // a valid NIF/NIE/CIF shape

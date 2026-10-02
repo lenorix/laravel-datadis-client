@@ -4,13 +4,17 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\DatadisException;
+use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\DatadisClient\Exceptions\NoDataException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Exceptions\ServiceUnavailableException;
@@ -397,3 +401,93 @@ it('offers the operations that change data through the facade and the injected c
     'facade (forwarded call)' => [fn () => LaravelDatadisClient::getFacadeRoot()],
     'injected' => [fn () => app(DatadisClient::class)],
 ]);
+
+it('fails a login that cannot connect as a transport error, before any data is asked', function () {
+    Http::fake(['*' => fn () => throw new ConnectionException('connection refused')]);
+
+    expect(fn () => app(DatadisClient::class)->getSupplies())->toThrow(TransportException::class);
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-supplies')))->toHaveCount(0);
+});
+
+it('counts a consumption query lost in transit as used, so it is not repeated', function () {
+    fakeDatadis();
+    $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
+    Http::swap(new Factory);
+    Http::preventStrayRequests();
+    $attempts = 0;
+    Http::fake([
+        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/get-consumption-data*' => function () use (&$attempts) {
+            $attempts++;
+
+            throw new ConnectionException('timed out');
+        },
+    ]);
+
+    try {
+        app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo());
+    } catch (TransportException $e) {
+    }
+
+    expect($e)->toBeInstanceOf(TransportException::class);
+    expect(fn () => app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo()))->toThrow(RepetitionWindowException::class);
+    expect($attempts)->toBe(1);
+});
+
+it('logs in again when the token it was given has already expired', function () {
+    $encode = fn (string $json) => rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+    $expired = $encode('{"alg":"HS512"}').'.'.$encode(json_encode(['sub' => 'a', 'iat' => time() - 200000, 'exp' => time() - 100000])).'.sig';
+    Http::fake([
+        '*/nikola-auth/tokens/login' => Http::sequence()->push($expired, 200, ['Content-Type' => 'text/plain'])->push(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/get-supplies*' => Http::response(['supplies' => [], 'distributorError' => []]),
+    ]);
+
+    app(DatadisClient::class)->getSupplies();
+    app(DatadisClient::class)->getSupplies();
+
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'login')))->toHaveCount(2);
+});
+
+it('refuses a guarded query without sending it when the cache store cannot be used', function () {
+    Cache::extend('broken', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function get($key)
+        {
+            throw new RuntimeException('cache is down');
+        }
+
+        public function put($key, $value, $seconds)
+        {
+            throw new RuntimeException('cache is down');
+        }
+
+        public function add($key, $value, $seconds)
+        {
+            throw new RuntimeException('cache is down');
+        }
+    }));
+    fakeDatadis();
+    $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
+    config()->set('cache.stores.broken', ['driver' => 'broken']);
+    config()->set('datadis-client.cache.store', 'broken');
+
+    expect(fn () => app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo()))->toThrow(LedgerUnavailableException::class);
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-consumption-data')))->toHaveCount(0);
+});
+
+it('lists the supplies of a named account, logging in as that account', function () {
+    config()->set('datadis-client.accounts.other', ['username' => '12345678Z', 'password' => 'other-secret']);
+    fakeDatadis();
+
+    $this->artisan('datadis:supplies --account=other')->expectsOutputToContain(CUPS)->assertSuccessful();
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), 'login') && $r['username'] === '12345678Z');
+});
+
+it('fails the command cleanly for a holder that is not a valid NIF', function (string $holder) {
+    fakeDatadis();
+
+    $this->artisan("datadis:supplies --holder={$holder}")->assertFailed();
+
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-supplies')))->toHaveCount(0);
+})->with(['not a nif' => 'nope', 'wrong control letter' => '12345678A', 'too short' => '1234']);

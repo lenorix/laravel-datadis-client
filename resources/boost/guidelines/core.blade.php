@@ -32,5 +32,5 @@ public function handle(DatadisClient $client): void
 @endverbatim
 
 - Security: unset, `datadis-client.http.stack` is `guzzle` (plain Guzzle) so Laravel's HTTP events, middleware and recorders never see the login password and the token; the test environment uses `laravel` so `Http::fake()` works. Do not switch production to `laravel`, and never log or record Datadis requests.
-- Test with `Http::fake()` (and `Http::preventStrayRequests()`): no test should reach the real Datadis. The `datadis-testing` skill has the endpoints and payloads.
+- Test with `Http::fake()` (and `Http::preventStrayRequests()`), which applies in the test environment where the stack is `laravel`: no test should reach the real Datadis. The `datadis-testing` skill has the endpoints and payloads.
 - Use a cache store with an atomic `add()` for `datadis-client.cache.store`: Redis, Memcached or database for several servers; `file` only coordinates processes on one host; `array` protects nothing across workers.

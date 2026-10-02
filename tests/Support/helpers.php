@@ -37,7 +37,7 @@ function nifOf(int $number): string
 
 function iterations(): int
 {
-    return (int) (getenv('DATADIS_PBT_ITERATIONS') ?: 100);
+    return (int) (getenv('DATADIS_PBT_ITERATIONS') ?: 200);
 }
 
 function logins(): array
