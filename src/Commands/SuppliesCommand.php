@@ -18,11 +18,14 @@ class SuppliesCommand extends Command
 
     public function handle(LaravelDatadisClient $datadis): int
     {
-        try {
-            $client = $datadis->account($this->option('account') ?: null);
+        $account = $this->option('account');
+        $holder = $this->option('holder');
 
-            if ($this->option('holder')) {
-                $client = $client->forHolder(Nif::fromString((string) $this->option('holder')));
+        try {
+            $client = $datadis->account(is_string($account) && $account !== '' ? $account : null);
+
+            if (is_string($holder) && $holder !== '') {
+                $client = $client->forHolder(Nif::fromString($holder));
             }
 
             $result = $client->getSupplies();

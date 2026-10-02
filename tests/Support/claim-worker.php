@@ -12,6 +12,10 @@ use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
 
+// Deprecation notices of old dependency versions must not end up in the answer.
+ini_set('display_errors', '0');
+error_reporting(E_ALL & ~E_DEPRECATED);
+
 require __DIR__.'/../../vendor/autoload.php';
 
 [, $directory, $barrier, $secret] = $argv;

@@ -92,7 +92,7 @@ it('lets exactly one of several simultaneous processes send a query, on a file c
         $processes = [];
 
         for ($i = 0; $i < 8; $i++) {
-            $process = proc_open([PHP_BINARY, $worker, $directory, $barrier, str_repeat('k', 32)], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            $process = proc_open([PHP_BINARY, '-d', 'display_errors=0', $worker, $directory, $barrier, str_repeat('k', 32)], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
             $processes[] = [$process, $pipes];
         }
 
@@ -100,7 +100,8 @@ it('lets exactly one of several simultaneous processes send a query, on a file c
 
         $answers = array_map(function (array $entry) {
             [$process, $pipes] = $entry;
-            $out = stream_get_contents($pipes[1]).stream_get_contents($pipes[2]);
+            $out = stream_get_contents($pipes[1]);
+            stream_get_contents($pipes[2]);
             proc_close($process);
 
             return $out;
