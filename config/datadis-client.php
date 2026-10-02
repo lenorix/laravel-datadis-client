@@ -94,4 +94,22 @@ return [
     */
     'report_level' => env('DATADIS_REPORT_LEVEL', 'warning'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | HTTP stack
+    |--------------------------------------------------------------------------
+    |
+    | `laravel` sends every call through Laravel's Http handler stack, so
+    | Http::fake() and Http::assertSent() work, but Laravel's request events,
+    | global middleware and recorders (Telescope, Nightwatch...) also see the
+    | login request, with the password, and its answer, with the token.
+    | `guzzle` uses plain Guzzle with the package's settings: nothing of
+    | Laravel sees the calls, and Http::fake() does not apply to them. Use
+    | `guzzle` in production if you run such recorders and `laravel` in tests.
+    |
+    */
+    'http' => [
+        'stack' => env('DATADIS_HTTP_STACK', 'laravel'),
+    ],
+
 ];

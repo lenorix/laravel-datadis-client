@@ -83,7 +83,13 @@ php artisan datadis:supplies [--account=other] [--holder=00000000T]
 
 ### Logging and request recorders
 
-Calls go through Laravel's `Http` client, so global HTTP middleware and recorders such as Telescope or Nightwatch can see the login request (the password) and its answer (the token). Exclude `datadis.es` from them, or from the request bodies they keep.
+By default calls go through Laravel's `Http` client, so `Http::fake()` works, but Laravel's request events, global HTTP middleware and recorders such as Telescope or Nightwatch also see the login request (the password) and its answer (the token). If you run such tools, send the calls through plain Guzzle instead:
+
+```dotenv
+DATADIS_HTTP_STACK=guzzle
+```
+
+Nothing of Laravel sees them then, and `Http::fake()` no longer applies: keep `laravel` in your test environment. Without that switch, exclude `datadis.es` from the recorders or from the request bodies they keep.
 
 ### Queued jobs
 
@@ -96,6 +102,7 @@ The client holds a password and cannot be serialised: resolve it in `handle()`, 
 | `default` | Account used by the binding, the facade and the command (`DATADIS_ACCOUNT`). |
 | `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`. |
 | `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
+| `http.stack` | `laravel` (default, `Http::fake()` works) or `guzzle` (no Laravel events or recorders see the login password and token): `DATADIS_HTTP_STACK`. |
 | `report_level` | Log level of a refused repeat (`RepetitionWindowException`), `warning` by default (`DATADIS_REPORT_LEVEL`). It is set after your own `withExceptions()`, so it wins over a level you set there; use `null` to leave your handler alone. |
 | `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |
 

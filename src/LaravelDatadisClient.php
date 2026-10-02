@@ -122,13 +122,20 @@ class LaravelDatadisClient
     }
 
     /**
-     * The package's Guzzle settings on Laravel's handler stack, so Http::fake() and Http::assertSent() see every call.
+     * The package's Guzzle settings, by default on Laravel's handler stack so Http::fake() and Http::assertSent() see every call.
      *
      * @param  array<array-key, mixed>  $settings
      */
     private function http(array $settings): ClientInterface
     {
-        return GuzzleClientFactory::create(DatadisConfig::fromArray($settings), ['handler' => $this->app->make(Http::class)->buildHandlerStack()]);
+        $config = DatadisConfig::fromArray($settings);
+
+        return match ($stack = $this->config()->get('datadis-client.http.stack', 'laravel')) {
+            'laravel' => GuzzleClientFactory::create($config, ['handler' => $this->app->make(Http::class)->buildHandlerStack()]),
+            // Plain Guzzle: no Laravel events, recorders or global middleware, which would see the login password and the token.
+            'guzzle' => GuzzleClientFactory::create($config),
+            default => throw new ConfigurationException('datadis-client.http.stack must be "laravel" or "guzzle", '.(is_string($stack) ? "\"{$stack}\"" : get_debug_type($stack)).' given.'),
+        };
     }
 
     private function config(): Config

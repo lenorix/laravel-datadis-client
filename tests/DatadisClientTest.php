@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Http\Client\Events\ConnectionFailed;
+use Illuminate\Http\Client\Events\RequestSending;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -262,4 +264,33 @@ it('sets the configured level on the exception handler', function () {
     $handler = app(ExceptionHandler::class);
 
     expect((fn () => $this->levels)->call($handler))->toHaveKey(RepetitionWindowException::class, 'info');
+});
+
+it('keeps the calls away from Laravel\'s Http events, recorders and fakes with the guzzle stack', function () {
+    config()->set('datadis-client.http.stack', 'guzzle');
+    config()->set('datadis-client.accounts.default.base_url', 'https://datadis.invalid');
+    config()->set('datadis-client.accounts.default.connect_timeout', 1);
+    Event::fake([RequestSending::class, ConnectionFailed::class]);
+    Http::fake();
+
+    // .invalid never resolves: the call fails on the network, not on Laravel's stray request guard.
+    $caught = null;
+    try {
+        app(DatadisClient::class)->getSupplies();
+    } catch (DatadisException $e) {
+        $caught = $e;
+    }
+
+    // With the Laravel stack the empty Http::fake() would have answered, so nothing would have failed.
+    expect($caught)->toBeInstanceOf(DatadisException::class);
+    expect($caught->getMessage())->not->toContain('StrayRequestException');
+
+    Http::assertNothingSent();
+    Event::assertNotDispatched(RequestSending::class);
+});
+
+it('refuses an unknown http stack', function () {
+    config()->set('datadis-client.http.stack', 'curl');
+
+    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'must be "laravel" or "guzzle"');
 });
