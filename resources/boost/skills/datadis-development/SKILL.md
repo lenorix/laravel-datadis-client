@@ -13,7 +13,7 @@ Use it when code calls `DatadisClient` or `PublicApiClient`, or computes somethi
 
 1. Get the client by injection (`DatadisClient $client`) or with `LaravelDatadisClient::account('name')`.
 2. Find the supply with `findSupply(Cups::fromString($cups))`. It returns `null` when the account does not see it.
-3. Check `$supply->isQueryable()`: the distributor code and point type that every data call needs come from the supplies list, never from you.
+3. Check `$supply->isQueryable()`: the distributor code and point type that the data calls need come from the supplies list, never from you. Only consumption takes the point type: contract detail, maximum power and reactive energy need the CUPS and the distributor code, and every `...Of()` call refuses an unusable supply with an `InvalidRequestException` before sending anything.
 4. Call a `...Of($supply, ...)` method with whole months (`Month::of(2026, 7)`), within the last 24 months.
 5. Read `$result->records`; check `isEmpty()` and `distributorErrors`.
 6. Store the whole result, `raw` included: the same query cannot be asked again for 24 hours.
@@ -38,6 +38,9 @@ $peak     = $client->getLatestMaxPowerOf($supply);                    // the sam
 $reactive = $client->getReactiveDataOf($supply, $from, $to);          // API v2 only
 $client->getSupplies(); $client->getDistributorsWithSupplies(); $client->getGroups();   // getGroups: API v2 only
 $client->listAuthorization();                                         // read only
+$client->checkLogin();                                                // logs in or takes the cached token; when it lasts, without reading data
+$client->assertServedRange($from, $to);                              // refuses a range Datadis would refuse, before any login
+$until = $client->consumptionDataOfBlockedUntil($supply, $from);      // ?DateTimeImmutable: until when the ledger refuses it, nothing sent or claimed
 ```
 
 `getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()` are for a job that runs every day: the range alternates between the current month and the previous plus the current month, so today's query is never yesterday's. Run it once a day. In the month the contract starts the range is that month every day (there is no previous month to alternate with), so a run within 24 hours and 10 minutes of the day before throws `RepetitionWindowException`: catch it. It throws `InvalidRequestException` when the contract has nothing to refresh this month. Reactive energy has no such method: ask it for closed months.
@@ -56,6 +59,10 @@ $client->partnerDeleteUser($nif);                                 // partner acc
 $client->partnerUserList(); $client->partnerAgreementDate();      // partner reads
 ```
 
+### Invoice periods
+
+`BillingCycle::monthlyFrom(15)->lastEndedPeriod(now())` gives the last closed period of a cycle that starts on the 15th, and `BillingPeriod::between($firstDay, $lastDay)` takes the dates of an invoice, which are the reliable source: Datadis does not publish the billing day, the retailer sets it and may move it. A period gives the months to ask for (`months()`), the readings that fall in it (`readingsOf()`), their exact total (`totalKWh()`) and whether the readings reach its end (`isCoveredBy()`). Dates are taken as they are on the Madrid calendar. This comes from the client's own documentation, not from a regulation: do not present the cycle as a rule.
+
 ### Open data and the terminal
 
 - Aggregated open data: `app(PublicApiClient::class)` or `LaravelDatadisClient::publicApi()`. `apiSearchAll()` pages for you.
@@ -65,8 +72,10 @@ $client->partnerUserList(); $client->partnerAgreementDate();      // partner rea
 
 Every list call returns an `ApiResult`: `records`, `isEmpty()`, `distributorErrors`, `isEmptyBecauseOfErrors()` and `skippedRows`. Each record keeps the untouched row in `raw`.
 
+- **The months asked for.** A consumption, maximum power or reactive result carries `startDate` and `endDate`: the range that was asked, which `getLatest...Of()` chose, also when a month came back empty.
+- **Daily answers hold two months** every other day: split them by month before adding them up.
 - **Empty is not zero.** `isEmpty()` means nothing is published yet, never "zero consumption".
-- **Numbers are decimal strings.** Add them with `Brick\Math\BigDecimal`, never with floats.
+- **Numbers are decimal strings,** and `raw` holds them as text too (`"0.301"`, not `0.301`: every digit Datadis sends is kept). Add them with `Brick\Math\BigDecimal`, never with floats.
 - **Dates** are `DateTimeImmutable` in the client's time zone: `Europe/Madrid` by default, `Atlantic/Canary` for the Canary Islands (`timezone` in the account config).
 - **Hours** are labelled `01:00` to `24:00` and mark the end of the hour. The last Sunday of October has two `03:00` rows and the last Sunday of March has none. Use each reading's `start`, `end`, `index` and `hourOfDay`; never expect 24 rows or key by date and time.
 - **Extra rows.** An extra `00:00` row has been reported from some distributors: skip it when `$reading->hasValidTime()` is false before adding energy up.
@@ -86,6 +95,9 @@ Every failure is a `Lenorix\DatadisClient\Exceptions\DatadisException` with `req
 | `RequestRejectedException` | Datadis refused the parameters | fix them; never resend as is |
 | `InvalidRequestException` | refused before sending | fix; nothing was sent |
 | `ServiceUnavailableException`, `TransportException` | Datadis or the network failed | later; a data query that may have arrived counts as used today |
+| `PageLimitReachedException` | `apiSearchAll()` or `apiSearchAutoAll()` stopped at `maxPages` with a full last page, after the last record | more records may remain: it carries `nextPage` and `skippedRows` |
+
+After a `401` the client logs in again and repeats only the calls that are safe to repeat: a guarded query, `newAuthorization()`, `cancelAuthorization()` and `partnerDeleteUser()` are not sent again, and fail with an `AuthenticationException` whose `requestSent` is `true`. A `RepetitionWindowException` from the ledger carries `availableAt` (when the query is allowed again) and `lastAttemptAt`.
 
 `Cups`, `Nif` and `Month` throw `InvalidArgumentException` on malformed input: check with `Cups::isValid()` and `Nif::isValid()` when it comes from a user.
 

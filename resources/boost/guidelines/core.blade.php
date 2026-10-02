@@ -14,7 +14,8 @@ Reads electricity data from Datadis, where Spanish distributors publish supply d
 ### Using the client
 
 - Inject `Lenorix\DatadisClient\DatadisClient`, or use the `Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient` facade. `LaravelDatadisClient::account('name')` picks another account, `->forHolder(Nif)` reads a third party's supplies, and `app(Lenorix\DatadisClient\PublicApiClient::class)` reads the open data.
-- Start from the supply: `findSupply(Cups)` returns it, or `null`. Check `isQueryable()` before the `...Of($supply, ...)` calls.
+- Start from the supply: `findSupply(Cups)` returns it, or `null`. Check `isQueryable()` before the consumption calls (the other `...Of()` calls need only the CUPS and the distributor code); an unusable supply throws an `InvalidRequestException` before anything is sent.
+- Invoice periods: `BillingCycle` and `BillingPeriod` (see `datadis-development`). Datadis does not publish the billing day: use the dates of the invoice.
 - Method and field names are Datadis's own (`getConsumptionData()`, `consumptionKWh`). Energy values are decimal strings, never floats.
 - Datadis hours end at `24:00` and a daylight saving day has 23 or 25 rows: use each reading's `start`, never date plus time.
 

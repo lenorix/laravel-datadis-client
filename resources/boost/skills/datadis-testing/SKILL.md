@@ -34,8 +34,8 @@ function fakeJwt(): string
 {
     $encode = fn (array $claims) => rtrim(strtr(base64_encode(json_encode($claims)), '+/', '-_'), '=');
 
-    // header.payload.signature, with an exp claim 24 hours ahead; the signature is never checked
-    return $encode(['alg' => 'HS512']).'.'.$encode(['exp' => time() + 86400]).'.signature';
+    // header.payload.signature, with an exp claim 24 hours ahead of the application's time; the signature is never checked
+    return $encode(['alg' => 'HS512']).'.'.$encode(['exp' => now()->addDay()->timestamp]).'.signature';
 }
 
 function fakeDatadis(): void
@@ -44,7 +44,7 @@ function fakeDatadis(): void
     $text = fn (string $body) => Http::response($body, 200, ['Content-Type' => 'text/plain']);
 
     Http::fake([
-        '*/nikola-auth/tokens/login' => $text(fakeJwt()),
+        '*/nikola-auth/tokens/login' => fn () => $text(fakeJwt()),   // a closure: a test that travels in time gets a token of its day
         '*/get-supplies*' => Http::response(['supplies' => [[
             'cups' => 'ES0000000000000000AA0A', 'distributor' => 'X', 'pointType' => 5,
             'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
@@ -76,6 +76,7 @@ function fakeDatadis(): void
 - **The 24 hour guard**: resolve the client twice (`app(DatadisClient::class)`), ask the same consumption twice, expect `RepetitionWindowException` the second time and only one consumption request: `Http::recorded(...)`.
 - **Failures**: `Http::response('', 404)` gives `NoDataException`, a `503` gives `ServiceUnavailableException`; assert `requestSent`. Harmless reads are retried: use `Http::sequence()->push('', 503)->push($ok)`. The retries wait for real (1 and 2 seconds by default), so in tests set `config()->set('datadis-client.http.retries', ['max' => 2, 'base_delay_ms' => 1, 'max_delay_ms' => 1])`, or `['max' => 0]` where a failed call must fail at once. Data queries and writes are never retried.
 - **Holders**: after `forHolder($nif)` the URL carries `authorizedNif=<NIF>`; it is omitted for the account's own NIF.
+- **Several days**: the package takes its time from the application, so `$this->travelTo(...)` (or `Carbon::setTestNow()`) moves the 24 hour guard, the range of `getLatest...Of()` and the life of the token together. Run a daily job over three days at the same Madrid time and each range differs from the day before. Build the months you ask for from the travelled time, not from the real one: a month in the future is refused.
 - **Another account**: set `datadis-client.accounts.other`, then `LaravelDatadisClient::account('other')`.
 - **Commands**: `Artisan::call('datadis:supplies')` and read `Artisan::output()`. A malformed input exits with code 1 and records no request.
 - **Numbers**: compare decimal strings, never floats.
