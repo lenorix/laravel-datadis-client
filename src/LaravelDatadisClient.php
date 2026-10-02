@@ -14,6 +14,7 @@ use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\DatadisClient\Http\GuzzleClientFactory;
+use Lenorix\DatadisClient\Http\RetryingClient;
 use Lenorix\DatadisClient\PublicApiClient;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
 use Psr\Http\Client\ClientInterface;
@@ -176,12 +177,51 @@ class LaravelDatadisClient
             throw new ConfigurationException('datadis-client.http.stack is "guzzle" in the test environment: Http::fake() would not apply and the test would reach Datadis. Leave DATADIS_HTTP_STACK unset in tests, or give datadis-client.http.options.handler a mock handler.');
         }
 
-        return match ($stack) {
+        $client = match ($stack) {
             'laravel' => GuzzleClientFactory::create($config, ['handler' => $this->app->make(Http::class)->buildHandlerStack()] + $options),
             // Plain Guzzle: no Laravel events, recorders or global middleware, which would see the login password and the token.
             'guzzle' => GuzzleClientFactory::create($config, $options),
             default => throw new ConfigurationException('datadis-client.http.stack must be "laravel" or "guzzle", '.(is_string($stack) ? "\"{$stack}\"" : get_debug_type($stack)).' given.'),
         };
+
+        return $this->withRetries($client);
+    }
+
+    /**
+     * Retries network failures and 502, 503 and 504 answers, with backoff, only where repeating is harmless: the login,
+     * the lists and the reads. Data queries and the calls that change data are never retried.
+     */
+    private function withRetries(ClientInterface $client): ClientInterface
+    {
+        $retries = $this->config()->get('datadis-client.http.retries');
+        $retries = is_array($retries) ? $retries : [];
+
+        $max = $this->whole($retries['max'] ?? 2, 'http.retries.max');
+        $base = $this->whole($retries['base_delay_ms'] ?? 1000, 'http.retries.base_delay_ms');
+        $longest = $this->whole($retries['max_delay_ms'] ?? 30000, 'http.retries.max_delay_ms');
+
+        if ($max < 0 || $max > 10) {
+            throw new ConfigurationException('datadis-client.http.retries.max must be between 0 and 10.');
+        }
+
+        if ($max === 0) {
+            return $client;
+        }
+
+        if ($base < 1 || $longest < $base) {
+            throw new ConfigurationException('datadis-client.http.retries delays must be positive and max_delay_ms not below base_delay_ms.');
+        }
+
+        return new RetryingClient($client, $max, $base, $longest);
+    }
+
+    private function whole(mixed $value, string $key): int
+    {
+        if (is_int($value) || (is_string($value) && preg_match('/^-?\d+$/', trim($value)) === 1)) {
+            return (int) $value;
+        }
+
+        throw new ConfigurationException("datadis-client.{$key} must be a whole number.");
     }
 
     private function config(): Config

@@ -119,6 +119,16 @@ return [
         // Extra Guzzle options for every call (a proxy, `verify`, a custom `handler`...), on top of the
         // package's own timeouts and settings. With the `laravel` stack its handler is kept.
         'options' => [],
+
+        // Network failures and 502, 503 and 504 answers are retried with exponential backoff, only for the
+        // calls where repeating is harmless (the login, the lists and the reads). Data queries (consumption,
+        // maximum power, reactive) and the calls that change data are never retried, because a request that
+        // may have reached Datadis uses up the 24 hour rule or changes data. `max` 0 turns it off.
+        'retries' => [
+            'max' => env('DATADIS_HTTP_RETRIES', 2),
+            'base_delay_ms' => 1000,
+            'max_delay_ms' => 30000,
+        ],
     ],
 
 ];

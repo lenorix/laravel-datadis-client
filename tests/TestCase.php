@@ -28,6 +28,8 @@ class TestCase extends Orchestra
     public function getEnvironmentSetUp($app)
     {
         config()->set('cache.default', 'array');
+        // Retries without waiting: the tests that fail a call do not sleep.
+        config()->set('datadis-client.http.retries', ['max' => 2, 'base_delay_ms' => 1, 'max_delay_ms' => 1]);
         // Explicit, although the testing environment already means it: Http::fake() needs Laravel's stack.
         config()->set('datadis-client.http.stack', 'laravel');
         // The guzzle stack must never reach the network from a test: an empty mock fails any call a test did not queue.
