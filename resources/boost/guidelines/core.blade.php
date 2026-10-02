@@ -49,3 +49,13 @@ public function handle(DatadisClient $client): void
 - `datadis-electricity-domain`: CUPS, access tariffs, periods P1 to P6, power, reactive energy and territories.
 - `datadis-sync`: scheduled jobs and backfills.
 - `datadis-testing`: faking Datadis with `Http::fake()`.
+
+### Official sources
+
+When you explain a rule, a tariff or a field to the user, cite where it comes from. The `datadis-electricity-domain` skill gives the exact article of each rule.
+
+- Datadis API manual: the API section of [datadis.es](https://datadis.es/private-api) (it asks for a Datadis login).
+- Tariffs, periods, holidays and reactive energy: [Circular CNMC 3/2020](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066).
+- Measurement point types: [Real Decreto 1110/2007](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478#a7), art. 7.
+- The CUPS: [CNMC, "El CUPS"](https://www.cnmc.es/sites/default/files/editor_contenidos/Energia/Consumidores/3.1.%20El%20CUPS.pdf).
+- How the real service behaves, with evidence: the [client's documentation](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md).

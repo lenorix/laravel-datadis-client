@@ -127,3 +127,9 @@ Every second day, not every day: the guard keeps a query for 24 hours and 10 min
 
 - One account, one login: the token is cached in the shared store, so many workers do not log in again.
 - Do not start the jobs of many accounts at the same instant without need.
+
+## Sources
+
+- The 24 hour rule: the Datadis API manual, sections 4.3 and 4.4 ("a control in the system does not allow repeating calls made in the last 24 hours"), in the API section of [datadis.es](https://datadis.es/private-api) (it asks for a Datadis login). The refusals the real service gives are in the client's [quirks and rules](https://github.com/lenorix/datadis-php-client/blob/main/docs/quirks-and-rules.md).
+- Job timeouts and `retry_after`: Laravel, [Job Expiration](https://laravel.com/docs/13.x/queues#job-expiration), [Max Job Attempts and Timeout](https://laravel.com/docs/13.x/queues#max-job-attempts-and-timeout) and [Worker Timeouts](https://laravel.com/docs/13.x/queues#worker-timeouts).
+- The 24 hour guard and the retries of this package: its README, and the client's [design decisions](https://github.com/lenorix/datadis-php-client/blob/main/docs/design-decisions.md).

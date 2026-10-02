@@ -11,6 +11,8 @@ Use it when you must understand what a Datadis field means, or compute something
 
 ## Units and shapes
 
+*Source: the Datadis API manual (sections 4.3 and 4.4; see [Sources](#sources)) and the answers observed by the client ([API reference](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md)).*
+
 - **Energy** is in kWh (`consumptionKWh`, `surplusEnergyKWh`, `generationEnergyKWh`). **Power** is in kW (`contractedPowerkW` and the maximum power, although the manual says watts).
 - **Reactive energy** is billed in kVArh. What Datadis returns for it (API v2 only) has not been seen with data yet, so do not assume its unit.
 - Values arrive as decimal strings and keep every digit Datadis sends. Add them with `Brick\Math\BigDecimal`, never with floats.
@@ -19,21 +21,27 @@ Use it when you must understand what a Datadis field means, or compute something
 
 ## The supply: CUPS and its codes
 
-- A **CUPS** identifies a supply point: `ES`, 16 digits, 2 control letters, and sometimes a digit and a letter more (for example `ES0000000000000000AA0A`). Datadis wants it exactly as listed.
-- Every data call also needs the **distributor code** (a short text: the manual says a number from 1 to 8, but treat it as opaque) and the **point type**. Both come from the supplies list.
-- The **point type** (`pointType`) is a whole number from 1 to 5 that classifies the supply by contracted power in any period (RD 1110/2007, art. 7):
+*Sources: the [CNMC guide to the CUPS](https://www.cnmc.es/sites/default/files/editor_contenidos/Energia/Consumidores/3.1.%20El%20CUPS.pdf) for its structure, [RD 1110/2007, art. 7](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478#a7) for the point types, and the Datadis API manual, section 4.1, for the codes.*
 
-| Type | Contracted power |
+- A **CUPS** identifies a supply point, not its holder, and is permanent. It is `ES`, the distributor's digits and 12 digits of the point (16 digits in all), 2 control letters, and sometimes a border point digit and letter more (20 or 22 characters, for example `ES0000000000000000AA0A`). Datadis wants it exactly as listed.
+- Every data call also needs the **distributor code** (a short text: the manual says a number from 1 to 8, but treat it as opaque) and the **point type**. Both come from the supplies list.
+- The **point type** (`pointType`) is a whole number from 1 to 5. For a consumer, RD 1110/2007 (art. 7) classifies it by contracted power in any period:
+
+| Type | Contracted power of a consumer |
 |---|---|
 | 1 | 10 MW or more |
 | 2 | above 450 kW |
-| 3 | above 50 kW up to 450 kW |
+| 3 | every point that fits no other type (in practice, above 50 kW up to 450 kW) |
 | 4 | above 15 kW up to 50 kW |
 | 5 | 15 kW or less (homes and small businesses) |
+
+The Real Decreto also classifies generation borders and other borders; those are not consumers.
 
 - Quarter-hourly data (`measurementType` 1): a type 5 supply answers an empty list, which is not an error and not zero consumption. Datadis offers it for the larger types; the labels of those answers have not been verified.
 
 ## Access tariffs
+
+*Source: [Circular CNMC 3/2020, art. 6.2](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066#a6).*
 
 The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many periods a supply has and how its hours are priced.
 
@@ -48,10 +56,12 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 
 - `$contract->tariff()` returns an `AccessTariff` or `null` when it is unsure. Datadis sends `accessFare` as free text (`BAJA TENSION y POTENCIA <= 15 kW`), so the client reads its shape and checks it against the contracted powers. Never match the text yourself.
 - `contractedPowerkW` has one value per power period: 2 values for 2.0TD, 6 for the others. If the number disagrees with the text, the tariff is `null`.
-- In the six-period tariffs the contracted power should not decrease from P1 to P6, but real data has broken the rule: do not enforce it.
+- In the six-period tariffs the Circular requires the contracted power not to decrease from P1 to P6 (art. 6.2), but real Datadis data has broken the rule: do not enforce it.
 - `codeFare` is the CNMC code of the tariff and is separate from `accessFare`.
 
 ## Tariff periods
+
+*Sources: [Circular CNMC 3/2020, art. 7.3](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066#a7) for 2.0TD and the holidays, and [art. 7.2](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066#a7) for the six-period calendar.*
 
 **2.0TD** (Peninsula, Baleares and Canarias) has three energy periods:
 
@@ -68,11 +78,15 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 
 ## Territories and time
 
+*Source: the periods per territory are in the Circular, art. 7.2 and 7.3; the postal code mapping is the one the client's `Territory` implements.*
+
 - The first two digits of a postal code give the province: `07` Baleares, `35` and `38` Canarias, `51` Ceuta, `52` Melilla, `01` to `52` otherwise the Peninsula. `Territory::fromPostalCode()` returns `null` for anything else.
 - The Peninsula, Baleares, Ceuta and Melilla use CET and CEST. The Canary Islands use WET and WEST: give the client `timezone` `Atlantic/Canary` for those supplies.
 - The Canary Islands, Ceuta and Melilla have their own period hours and seasons in the six-period calendar.
 
 ## Maximum power, reactive energy and self-consumption
+
+*Sources: the Datadis API manual (4.2 contract detail, 4.4 maximum power), the [API reference](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md) for the unit of the maximum power, and [Circular CNMC 3/2020, art. 9.5](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066#a9) for the reactive energy.*
 
 - **Maximum power** (`getMaxPowerOf()`) returns one row per tariff period, in kW, with the date and time it was reached; `periodNumber()` gives the period. The time looks like the end of a quarter hour (a peak at `00:00` fits the last quarter of the previous day), which has not been verified. Compare it with the contracted power of the same period.
 - **Reactive energy** (`getReactiveDataOf()`, API v2 only). The Circular bills the excess of reactive energy to every supply except 2.0TD (low voltage, 15 kW or less): in all periods except P6, when the reactive energy of the billing period exceeds 33 % of the active, and only the excess is billed. The client only gives the values: apply the rule yourself, over the whole billing period.
@@ -80,9 +94,13 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 
 ## Authorization
 
+*Source: the Datadis API manual (the `authorizedNif` parameter, section 4.1) and the client's [API reference](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md).*
+
 A holder (the owner of the supply) authorizes a third party's NIF inside Datadis. The third party asks with its own credentials and the holder's NIF as `authorizedNif`, never with the holder's password. Each authorization has a status and a validity period (`listAuthorization()` shows them); a missing or expired one shows up as `AuthorizationException`.
 
 ## What is available, and when
+
+*Sources: the Datadis API manual (the 24 hour control, sections 4.3 and 4.4) and the refusals observed by the client ([quirks and rules](https://github.com/lenorix/datadis-php-client/blob/main/docs/quirks-and-rules.md)).*
 
 - Whole months within the last 24 months; the boundary month, exactly two years back, is refused.
 - The current month has data up to about two days ago, and a month can keep changing for some days after it ends. A run of trailing zeros in the current month is not real consumption.
@@ -119,6 +137,12 @@ foreach ($client->getConsumptionDataOf($supply, $month)->records as $reading) {
 
 ## Sources
 
-- Circular CNMC 3/2020, articles 6 and 7 ([BOE-A-2020-1066](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066)): tariffs, periods, holidays and reactive energy.
-- Real Decreto 1110/2007, article 7 ([BOE-A-2007-16478](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478)): point types.
-- The public Datadis API manual and the answers observed by `lenorix/datadis-client`: fields, units and limits of the data.
+Official sources, to cite when you explain a rule or a figure to the user:
+
+- [Circular CNMC 3/2020](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066) (BOE-A-2020-1066): art. 6.2 access tariffs, art. 7.2 and 7.3 periods and holidays, art. 9.5 reactive energy.
+- [Real Decreto 1110/2007](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478#a7) (BOE-A-2007-16478), art. 7: classification of the measurement points.
+- [CNMC, "El CUPS"](https://www.cnmc.es/sites/default/files/editor_contenidos/Energia/Consumidores/3.1.%20El%20CUPS.pdf): what the CUPS is and its structure.
+- [Datadis](https://datadis.es) API manual, in the API section of the site ([datadis.es/private-api](https://datadis.es/private-api); it asks for a Datadis login): endpoints, parameters and answers.
+- Behaviour of the real service, with the evidence of each point: the client's [API reference](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md), [quirks and rules](https://github.com/lenorix/datadis-php-client/blob/main/docs/quirks-and-rules.md) and [domain notes](https://github.com/lenorix/datadis-php-client/blob/main/docs/domain-knowledge.md).
+
+What the sources do not say is marked here as not verified: which point types return quarter-hourly data, the unit of Datadis's reactive values and the meaning of the time of a maximum power row.

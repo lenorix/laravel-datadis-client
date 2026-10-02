@@ -69,3 +69,8 @@ function fakeDatadis(): void
 - Do not answer everything with one catch-all `'*'` response: the login and the data endpoints have different bodies.
 - Do not share a cache store between tests and a real environment: it would hold a real token and real guard entries.
 - Do not call the real Datadis "just once" from a test.
+
+## Sources
+
+- The endpoints, parameters and answer shapes to fake: the Datadis API manual, in the API section of [datadis.es](https://datadis.es/private-api) (it asks for a Datadis login), and the answers recorded by the client ([API reference](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md)).
+- Faking in Laravel: [Faking Responses](https://laravel.com/docs/13.x/http-client#faking-responses), [Faking Response Sequences](https://laravel.com/docs/13.x/http-client#faking-response-sequences) and [Preventing Stray Requests](https://laravel.com/docs/13.x/http-client#preventing-stray-requests).

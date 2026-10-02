@@ -91,3 +91,10 @@ Every failure is a `Lenorix\DatadisClient\Exceptions\DatadisException` with `req
 - Do not log, dump or record credentials, tokens or Datadis requests.
 - Do not assume a supply belongs to the account: handle `findSupply()` returning `null`.
 - Do not add floats, and do not key readings by date and time.
+
+## Sources
+
+- Endpoints, parameters and answers: the Datadis API manual, in the API section of [datadis.es](https://datadis.es/private-api) (it asks for a Datadis login).
+- What the real service does, with the evidence of each point (units, refusals, hour labels, error answers): the client's [API reference](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md) and [quirks and rules](https://github.com/lenorix/datadis-php-client/blob/main/docs/quirks-and-rules.md).
+- The meaning of a field or a tariff: the `datadis-electricity-domain` skill, with its official sources.
+- Every call, result and exception of the client: the [lenorix/datadis-client README](https://github.com/lenorix/datadis-php-client#readme).

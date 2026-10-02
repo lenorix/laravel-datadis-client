@@ -26,6 +26,7 @@ composer audit           # known vulnerabilities in the dependencies
 - A failing property prints a seed: reproduce it with `ERIS_SEED=<seed> vendor/bin/pest --filter '<test name>'`.
 - Keep credentials, tokens, NIFs and CUPS out of code, tests and commits: use the placeholders already there (`00000000T`, `12345678Z`, `ES0000000000000000AA0A`).
 - Update the README, the Laravel Boost guideline and skills (`resources/boost`) and the CHANGELOG when behaviour changes.
+- Every fact of the Spanish electricity domain in `resources/boost` must cite an official source (the BOE, the CNMC, the Datadis manual) with the article or section, and be pinned to the package's calendars in `tests/DomainFactsTest.php`. Check the links when you change them.
 
 ## Security
 
