@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\Time\Month;
@@ -48,4 +49,13 @@ function logins(): array
 function monthsAgo(int $months = 3): Month
 {
     return Month::current(new DateTimeImmutable)->addMonths(-$months);
+}
+
+/** A clean HTTP factory and cache with Datadis faked, for one property case. */
+function freshHttp(): void
+{
+    Http::swap(new Factory);
+    Http::preventStrayRequests();
+    app('cache')->store()->clear();
+    fakeDatadis();
 }

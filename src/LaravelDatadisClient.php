@@ -106,7 +106,14 @@ class LaravelDatadisClient
             return null;
         }
 
-        return array_replace(is_array($account) ? $account : [], array_filter(is_array($service) ? $service : [], fn ($value) => $value !== null && $value !== ''));
+        $account = is_array($account) ? $account : [];
+        $service = array_filter(is_array($service) ? $service : [], fn ($value) => ! is_string($value) ? $value !== null : trim($value) !== '');
+
+        // Datadis reads `api_version` and `api-version` alike and prefers the first: drop the account's spelling of every key services sets.
+        $spelled = array_map(static fn ($key) => str_replace('-', '_', (string) $key), array_keys($service));
+        $account = array_filter($account, static fn ($key) => ! in_array(str_replace('-', '_', (string) $key), $spelled, true), ARRAY_FILTER_USE_KEY);
+
+        return array_replace($account, $service);
     }
 
     private function defaultAccount(): string
