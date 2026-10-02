@@ -30,5 +30,6 @@ public function handle(DatadisClient $client): void
 </code-snippet>
 @endverbatim
 
+- Security: with the default `datadis-client.http.stack` = `laravel`, Laravel's HTTP events, middleware and recorders (Telescope, Nightwatch) can see the login password and the token. Production should set `DATADIS_HTTP_STACK=guzzle`; keep `laravel` in tests. Never log or record Datadis requests.
 - Test with `Http::fake()` (and `Http::preventStrayRequests()`): no test should reach the real Datadis. The `datadis-testing` skill has the endpoints and payloads.
 - Use a cache store with an atomic `add()` for `datadis-client.cache.store`: Redis, Memcached or database for several servers; `file` only coordinates processes on one host; `array` protects nothing across workers.

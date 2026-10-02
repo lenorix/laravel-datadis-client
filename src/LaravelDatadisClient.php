@@ -130,10 +130,13 @@ class LaravelDatadisClient
     {
         $config = DatadisConfig::fromArray($settings);
 
+        $options = $this->config()->get('datadis-client.http.options');
+        $options = is_array($options) ? $options : [];
+
         return match ($stack = $this->config()->get('datadis-client.http.stack', 'laravel')) {
-            'laravel' => GuzzleClientFactory::create($config, ['handler' => $this->app->make(Http::class)->buildHandlerStack()]),
+            'laravel' => GuzzleClientFactory::create($config, ['handler' => $this->app->make(Http::class)->buildHandlerStack()] + $options),
             // Plain Guzzle: no Laravel events, recorders or global middleware, which would see the login password and the token.
-            'guzzle' => GuzzleClientFactory::create($config),
+            'guzzle' => GuzzleClientFactory::create($config, $options),
             default => throw new ConfigurationException('datadis-client.http.stack must be "laravel" or "guzzle", '.(is_string($stack) ? "\"{$stack}\"" : get_debug_type($stack)).' given.'),
         };
     }

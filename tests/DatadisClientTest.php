@@ -1,5 +1,8 @@
 <?php
 
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Response;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\Client\Events\ConnectionFailed;
 use Illuminate\Http\Client\Events\RequestSending;
@@ -293,4 +296,43 @@ it('refuses an unknown http stack', function () {
     config()->set('datadis-client.http.stack', 'curl');
 
     expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'must be "laravel" or "guzzle"');
+});
+
+it('warns about a distributor that failed while listing supplies', function () {
+    fakeDatadis();
+    Http::swap(new Factory);
+    Http::preventStrayRequests();
+    Http::fake([
+        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/api-private/api/get-supplies*' => Http::response(['supplies' => [], 'distributorError' => [
+            ['distributorCode' => '2', 'distributorName' => 'X', 'errorCode' => '500', 'errorDescription' => 'distributor is down'],
+        ]]),
+    ]);
+
+    $this->artisan('datadis:supplies')->expectsOutputToContain('distributor is down')->assertSuccessful();
+});
+
+it('completes a whole flow on the guzzle stack, decoding the answers, without touching Laravel\'s Http', function () {
+    $mock = new MockHandler([
+        new Response(200, ['Content-Type' => 'text/plain'], fakeToken()),
+        new Response(200, ['Content-Type' => 'application/json'], json_encode(['supplies' => [[
+            'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
+        ]], 'distributorError' => []])),
+        new Response(200, ['Content-Type' => 'application/json'], json_encode(['timeCurve' => [[
+            'cups' => CUPS, 'date' => '2026/07/01', 'time' => '01:00', 'consumptionKWh' => 0.123, 'obtainMethod' => 'Real',
+        ]], 'distributorError' => []])),
+    ]);
+    config()->set('datadis-client.http.stack', 'guzzle');
+    config()->set('datadis-client.http.options', ['handler' => HandlerStack::create($mock)]);
+    Http::fake();
+
+    $client = app(DatadisClient::class);
+    $supply = $client->findSupply(Cups::fromString(CUPS));
+    $result = $client->getConsumptionDataOf($supply, monthsAgo());
+
+    expect($supply?->distributorCode)->toBe('2');
+    expect($result->records)->toHaveCount(1);
+    expect($result->records[0]->consumptionKWh)->toBe('0.123');
+    expect($mock->count())->toBe(0);   // login, supplies and consumption all answered by Guzzle
+    Http::assertNothingSent();
 });

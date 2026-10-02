@@ -110,6 +110,10 @@ return [
     */
     'http' => [
         'stack' => env('DATADIS_HTTP_STACK', 'laravel'),
+
+        // Extra Guzzle options for every call (a proxy, `verify`, a custom `handler`...), on top of the
+        // package's own timeouts and settings. With the `laravel` stack its handler is kept.
+        'options' => [],
     ],
 
 ];

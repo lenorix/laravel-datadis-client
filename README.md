@@ -32,6 +32,18 @@ DATADIS_PASSWORD=your-password
 
 `services.datadis` also accepts the other account settings (`api_version`, `timezone`, `timeout`...) and wins over the account named `default` in `config/datadis-client.php`, which keeps the same `DATADIS_*` variables as a fallback and holds extra accounts.
 
+## Security
+
+By default every call goes through Laravel's `Http` client so it can be faked in tests. The price: Laravel's request events, global HTTP middleware and recorders (Telescope, Nightwatch, your own logging middleware) can see the login request, which carries your Datadis **password**, and its answer, which carries the **token** (the token is also kept in your cache store, so protect that store like a password).
+
+In production, send the calls through plain Guzzle, where nothing of Laravel sees them:
+
+```dotenv
+DATADIS_HTTP_STACK=guzzle
+```
+
+Keep `laravel` in the test environment (`Http::fake()` does not apply to the `guzzle` stack). Details in [Logging and request recorders](#logging-and-request-recorders).
+
 ## Usage
 
 Inject the client, or use the facade, which forwards to the default account:
@@ -103,6 +115,7 @@ The client holds a password and cannot be serialised: resolve it in `handle()`, 
 | `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`. |
 | `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
 | `http.stack` | `laravel` (default, `Http::fake()` works) or `guzzle` (no Laravel events or recorders see the login password and token): `DATADIS_HTTP_STACK`. |
+| `http.options` | Extra Guzzle options for every call (a proxy, `verify`...), merged over the package's own settings. |
 | `report_level` | Log level of a refused repeat (`RepetitionWindowException`), `warning` by default (`DATADIS_REPORT_LEVEL`). It is set after your own `withExceptions()`, so it wins over a level you set there; use `null` to leave your handler alone. |
 | `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |
 
