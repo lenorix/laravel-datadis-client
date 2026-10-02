@@ -24,7 +24,7 @@ Use it when you must understand what a Datadis field means, or compute something
 *Sources: the [CNMC guide to the CUPS](https://www.cnmc.es/sites/default/files/editor_contenidos/Energia/Consumidores/3.1.%20El%20CUPS.pdf) for what it is and its structure, the client's [quirks and rules](https://github.com/lenorix/datadis-php-client/blob/main/docs/quirks-and-rules.md) for its optional suffix and how Datadis takes it, [RD 1110/2007, art. 7](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478#a7) for the point types, and the Datadis API manual, sections 4.1 and 4.3, for the codes.*
 
 - A **CUPS** identifies a supply point, not its holder, and is permanent. It is `ES`, the distributor's digits and 12 digits of the point (16 digits in all) and 2 control letters: 20 characters, for example `ES0000000000000000AA0A`. Some have a border point suffix of a digit and a letter (22 characters). Datadis wants it exactly as the supplies list gives it: a lowercase CUPS, or the 20 character form of one that has the suffix, is refused as not authorized.
-- Every data call also needs the **distributor code** (a short text: the manual says a number from 1 to 8, but treat it as opaque) and the **point type**. Both come from the supplies list.
+- Every data call also needs the **distributor code** (a short text: the manual says a number from 1 to 8, but treat it as opaque), and the consumption call the **point type** too; the other calls need only the CUPS and the distributor code. They come from the supplies list.
 - The **point type** (`pointType`) is a whole number from 1 to 5. For a consumer, RD 1110/2007 (art. 7) classifies it by contracted power in any period:
 
 | Type | Contracted power of a consumer |

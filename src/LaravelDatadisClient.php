@@ -116,10 +116,10 @@ class LaravelDatadisClient
      *
      * @return bool whether it was recorded
      *
-     * @throws InvalidArgumentException when a value is not valid, the range is reversed, `$at` is more than ten minutes in the
-     *                                  future or the account is not configured
-     * @throws ConfigurationException when the cache repository is not a Laravel one, which cannot be given a lifetime
-     * @throws LedgerUnavailableException when the guard's store fails, or another import of the same query does not finish
+     * @throws InvalidArgumentException when the account is not configured
+     * @throws InvalidRequestException when a value is not valid, the range is reversed or `$at` is more than ten minutes in the future
+     * @throws ConfigurationException when the account's settings or the cache are wrong (the account is built first)
+     * @throws LedgerUnavailableException when the guard's store fails, or another import does not finish
      */
     public function rememberConsumption(
         Cups $cups,
@@ -198,7 +198,7 @@ class LaravelDatadisClient
      */
     private function exclusively(?string $account, Closure $import): mixed
     {
-        $client = $this->account($account);
+        $client = $this->clientForImport($account);
         $store = $this->store();
         $provider = $store instanceof CacheRepository ? $store->getStore() : null;
 
@@ -211,6 +211,22 @@ class LaravelDatadisClient
         } catch (LockTimeoutException $e) {
             throw new LedgerUnavailableException('Another import did not finish: import the history from one process.', previous: $e);
         }
+    }
+
+    /**
+     * The client an import needs: the account's settings and the ledger, and no HTTP stack, since nothing is sent. A wrong
+     * `http` setting must not stop an import, and no request can leave from it.
+     *
+     * @throws InvalidArgumentException when the account is not configured
+     * @throws ConfigurationException when its settings are wrong
+     */
+    private function clientForImport(?string $name): DatadisClient
+    {
+        $this->reportLevel();
+        $settings = $this->settings($name ?? $this->defaultAccount())
+            ?? throw new InvalidArgumentException('The Datadis account ['.($name ?? $this->defaultAccount()).'] is not configured in services.datadis or datadis-client.accounts.');
+
+        return DatadisClient::fromArray($settings, ledger: $this->ledger(), clock: $this->clock);
     }
 
     private function importLockName(string $username): string
