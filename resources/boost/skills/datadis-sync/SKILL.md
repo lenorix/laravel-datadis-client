@@ -27,12 +27,15 @@ A planning job decides which months are worth asking for, and one queued job per
 
 - The **planning job** only reads (the login and the supplies list). Reads are safe to retry, so it may be retried, and nothing is dispatched until the lookup has succeeded.
 - Each **range job** makes one data query, which must never be retried by the queue. It takes the codes from the planner, so it does not list the supplies again.
+- **Unique jobs take their lock from the default cache store**, unless the job says otherwise with `uniqueVia()`. The range job uses the store of the guard (`datadis-client.cache.store`), which the workers must share: with a default store of `array`, or of `file` across several servers, the same range could be queued twice.
 
 ```php
 use DateTimeImmutable;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Cache;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\NoDataException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
@@ -98,6 +101,11 @@ class SyncSupplyRange implements ShouldQueue, ShouldBeUnique
     public function uniqueId(): string
     {
         return "{$this->cups}:{$this->from}:{$this->to}";
+    }
+
+    public function uniqueVia(): Repository
+    {
+        return Cache::store(config('datadis-client.cache.store') ?: null);   // the store the workers share, not the default one
     }
 
     public function handle(DatadisClient $client): void
