@@ -72,8 +72,11 @@ return [
     |
     | Datadis refuses an identical consumption, maximum power or reactive query
     | for 24 hours and counts the refused ones. Only a keyed hash of each query
-    | is stored. `key` is that secret (at least 16 bytes); null derives it from
-    | `app.key`. Changing it forgets every query already made.
+    | is stored. `key` is that secret: a text of at least 16 bytes, used as it
+    | is (a `base64:` prefix is not decoded). Null derives one from `app.key`,
+    | which must give at least 16 bytes. Anything else fails. Changing the
+    | secret, or rotating `app.key` when it is derived, forgets every query
+    | already made.
     |
     */
     'ledger' => [
