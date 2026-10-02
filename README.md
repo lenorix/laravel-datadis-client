@@ -203,9 +203,11 @@ foreach (SentQuery::where('sent_at', '>', now()->subHours(25))->get() as $sent) 
 }
 ```
 
-- **`rememberConsumption()`**, **`rememberMaxPower()`** and **`rememberReactive()`** match the three queries the guard covers. Consumption takes the point type, and the measurement type and the holder (`authorizedNif:`) if you used them. Maximum power and reactive energy take only the CUPS, the distributor code and the months, which is all Datadis keys them on.
+- **`rememberConsumption()`**, **`rememberMaxPower()`** and **`rememberReactive()`** match the three queries the guard covers. Consumption takes the point type, and the measurement type and the holder (`authorizedNif:`) if you used them. Maximum power and reactive energy take only the CUPS, the distributor code and the months, which is all Datadis keys them on. They are the same entry for the guard: remembering one blocks the other, as sending one does.
 - The order of the history does not matter, and it may hold the same query more than once: the guard keeps the newest attempt of each query, since its window is the one that ends last. A call returns `true` when it recorded the attempt, and `false` when the attempt is older than the window or the guard already holds this one or a newer one. It never takes a newer attempt back to an older time.
-- The attempt is remembered for what is left of its window: one sent 23 hours ago blocks a repeat for one more hour and ten minutes.
+- The attempt is remembered for what is left of its window: one sent 23 hours ago blocks a repeat for one more hour and ten minutes. `at` must be a `DateTimeInterface` (a date column cast by Eloquent, not a string), and at most ten minutes ahead of now: anything else throws before it records, so a timezone mistake aborts the import instead of seeding a wrong time.
+- Pass `account: 'second'` for a named account. Without it the entries are kept for the default account only, and the other accounts stay unguarded.
+- **Stop the workers while you import** (pause the queue and the scheduler). A worker that sends in the middle of the import is protected, but only the pause makes that certain.
 - Include the queries Datadis rejected and the ones that timed out: it counts them too.
 - If you cannot be sure the old record is complete (a crashed worker, a query sent from another tool), wait the whole window.
 - Keep the old record until the window has passed, and do not send guarded queries from both systems at once.
