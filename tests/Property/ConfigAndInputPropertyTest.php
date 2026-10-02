@@ -98,26 +98,27 @@ function commandWithBadInput(string $kind, string $bad): array
         'cups to authorize' => ['datadis:authorize', ['nif' => '12345678Z', '--cups' => [$bad]]],
         'nif to cancel' => ['datadis:authorization:cancel', ['nif' => $bad]],
         'holder' => ['datadis:supplies', ['--holder' => $bad]],
+        'owner' => ['datadis:authorizations', ['--owner' => $bad]],
     };
 }
 
 function wellFormed(string $kind, string $value): bool
 {
     // An empty option counts as not given, as documented: the first month only, every supply, no holder.
-    if ($value === '' && in_array($kind, ['last month', 'start date', 'end date', 'holder'], true)) {
+    if ($value === '' && in_array($kind, ['last month', 'start date', 'end date', 'holder', 'owner'], true)) {
         return true;
     }
 
     return match ($kind) {
         'month', 'last month' => preg_match('/^\d{4}[-\/](0[1-9]|1[0-2])$/D', $value) === 1,
         'cups to read', 'cups of a contract', 'cups to authorize' => Cups::isValid($value),
-        'nif to authorize', 'nif to cancel', 'holder' => Nif::isValid($value),
+        'nif to authorize', 'nif to cancel', 'holder', 'owner' => Nif::isValid($value),
         'start date', 'end date' => preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $value, $m) === 1 && checkdate((int) $m[2], (int) $m[3], (int) $m[1]),
     };
 }
 
 it('never sends a request for a malformed command input, whatever it is', function () {
-    $kinds = ['month', 'last month', 'cups to read', 'cups of a contract', 'nif to authorize', 'start date', 'end date', 'cups to authorize', 'nif to cancel', 'holder'];
+    $kinds = ['month', 'last month', 'cups to read', 'cups of a contract', 'nif to authorize', 'start date', 'end date', 'cups to authorize', 'nif to cancel', 'holder', 'owner'];
 
     $this->limitTo(iterations() * 3)->forAll(Generators::elements(...$kinds), Generators::oneOf(
         Generators::string(),

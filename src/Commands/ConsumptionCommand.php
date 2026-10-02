@@ -4,9 +4,12 @@ namespace Lenorix\LaravelDatadisClient\Commands;
 
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Values\MeasurementType;
+use Lenorix\LaravelDatadisClient\Commands\Concerns\ReadsForAHolder;
 
 class ConsumptionCommand extends DatadisCommand
 {
+    use ReadsForAHolder;
+
     public $signature = 'datadis:consumption
                          {cups : The CUPS of the supply}
                          {month : First month, as YYYY-MM}

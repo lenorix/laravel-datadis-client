@@ -3,9 +3,12 @@
 namespace Lenorix\LaravelDatadisClient\Commands;
 
 use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\LaravelDatadisClient\Commands\Concerns\ReadsForAHolder;
 
 class ContractCommand extends DatadisCommand
 {
+    use ReadsForAHolder;
+
     public $signature = 'datadis:contract
                          {cups : The CUPS of the supply}
                          {--account= : Account of datadis-client.accounts, the default one if omitted}

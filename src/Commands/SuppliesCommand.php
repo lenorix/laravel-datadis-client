@@ -3,9 +3,12 @@
 namespace Lenorix\LaravelDatadisClient\Commands;
 
 use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\LaravelDatadisClient\Commands\Concerns\ReadsForAHolder;
 
 class SuppliesCommand extends DatadisCommand
 {
+    use ReadsForAHolder;
+
     public $signature = 'datadis:supplies
                          {--account= : Account of datadis-client.accounts, the default one if omitted}
                          {--holder= : NIF of a holder who authorized the account}';

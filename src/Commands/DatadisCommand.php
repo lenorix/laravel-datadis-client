@@ -35,6 +35,15 @@ abstract class DatadisCommand extends Command
     abstract protected function perform(DatadisClient $client): int;
 
     /**
+     * The NIF of the holder the command reads for. None by default: the commands that act for the account itself
+     * (the authorizations) must not take one, which would suggest the operation is made for that holder.
+     */
+    protected function holderOption(): mixed
+    {
+        return null;
+    }
+
+    /**
      * Prints what the distributors reported and gives the exit code of a read.
      *
      * A run that got no data because a distributor failed is a failure: a script that looks only at the exit
@@ -63,7 +72,7 @@ abstract class DatadisCommand extends Command
     private function client(LaravelDatadisClient $datadis): DatadisClient
     {
         $account = $this->option('account');
-        $holder = $this->option('holder');
+        $holder = $this->holderOption();
 
         $client = $datadis->account(is_string($account) && $account !== '' ? $account : null);
 

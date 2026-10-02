@@ -7,14 +7,16 @@ use Lenorix\DatadisClient\DatadisClient;
 class AuthorizationsCommand extends DatadisCommand
 {
     public $signature = 'datadis:authorizations
-                         {--account= : Account of datadis-client.accounts, the default one if omitted}
-                         {--holder= : NIF of a holder who authorized the account}';
+                         {--owner= : Only the authorizations given by this owner (a NIF, NIE or CIF)}
+                         {--account= : Account of datadis-client.accounts, the default one if omitted}';
 
-    public $description = 'List who can read which supplies of the account';
+    public $description = 'List who can read which supplies of the account (it acts for the account itself, never for a holder)';
 
     protected function perform(DatadisClient $client): int
     {
-        $result = $client->listAuthorization();
+        $owner = $this->option('owner');
+
+        $result = $client->listAuthorization(is_string($owner) && $owner !== '' ? $this->nif($owner) : null);
 
         $this->table(
             ['Owner', 'Requester', 'CUPS', 'Status', 'From', 'To'],

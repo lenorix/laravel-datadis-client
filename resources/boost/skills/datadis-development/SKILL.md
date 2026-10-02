@@ -55,7 +55,7 @@ $client->partnerUserList(); $client->partnerAgreementDate();      // partner rea
 ### Open data and the terminal
 
 - Aggregated open data: `app(PublicApiClient::class)` or `LaravelDatadisClient::publicApi()`. `apiSearchAll()` pages for you.
-- Artisan: `datadis:supplies`, `datadis:contract {cups}`, `datadis:consumption {cups} {YYYY-MM} [--to=] [--quarter-hourly]`, `datadis:authorizations`, `datadis:authorize {nif}`, `datadis:authorization:cancel {nif}`. All take `--account` and `--holder`; a bad input fails before anything is sent. Exit code 0 is a success (an empty answer, or a distributor error beside real data, only warns); 1 is a bad input, a Datadis error, or a distributor failure with no data. A script can rely on it.
+- Artisan: `datadis:supplies`, `datadis:contract {cups}`, `datadis:consumption {cups} {YYYY-MM} [--to=] [--quarter-hourly]`, `datadis:authorizations`, `datadis:authorize {nif}`, `datadis:authorization:cancel {nif}`. All take `--account`. The reading ones (`supplies`, `contract`, `consumption`) also take `--holder`; the authorization commands act for the account itself and have none (`datadis:authorizations` takes `--owner`). A bad input fails before anything is sent. Exit code 0 is a success (an empty answer, or a distributor error beside real data, only warns); 1 is a bad input, a Datadis error, or a distributor failure with no data. A script can rely on it.
 
 ## Reading the results
 

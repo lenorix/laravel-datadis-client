@@ -3,6 +3,7 @@
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
+use Symfony\Component\Console\Exception\RuntimeException;
 
 const DISTRIBUTOR_DOWN = ['distributorCode' => '2', 'distributorName' => 'X', 'errorCode' => '500', 'errorDescription' => 'distributor is down'];
 
@@ -251,6 +252,56 @@ it('takes a third party\'s access away', function () {
     expect($output)->toContain('Authorization cancelled');
     Http::assertSent(fn (Request $r) => str_contains($r->url(), 'cancel-authorization') && str_contains($r->url(), 'authorizedNif=12345678Z'));
 });
+
+it('does not take --holder in the commands that act for the account itself', function (string $command) {
+    fakeForCommands();
+
+    // Taking it would suggest the operation is made for that holder, when it is made for the account.
+    expect(fn () => runCommand($command.' --holder=12345678Z'))->toThrow(RuntimeException::class, 'The "--holder" option does not exist.');
+    expect(Http::recorded())->toHaveCount(0);
+})->with([
+    'datadis:authorizations',
+    'datadis:authorize 12345678Z',
+    'datadis:authorization:cancel 12345678Z',
+]);
+
+it('lists the authorizations of one owner', function () {
+    fakeForCommands();
+
+    [$code, $output] = runCommand('datadis:authorizations --owner=00000000T');
+
+    expect($code)->toBe(0);
+    expect($output)->toContain('ACTIVE');
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), 'list-authorization') && str_contains($r->url(), 'ownerNif=00000000T'));
+});
+
+it('lists every authorization when no owner is given', function () {
+    fakeForCommands();
+
+    runCommand('datadis:authorizations');
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), 'list-authorization') && ! str_contains($r->url(), 'ownerNif'));
+});
+
+it('refuses an owner that is not a NIF before sending anything', function () {
+    fakeForCommands();
+
+    [$code] = runCommand('datadis:authorizations --owner=nope');
+
+    expect($code)->toBe(1);
+    expect(Http::recorded())->toHaveCount(0);
+});
+
+it('still takes --holder where it reads the supplies of a holder', function (string $command, string $endpoint) {
+    fakeForCommands();
+
+    runCommand($command.' --holder=12345678Z');
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), $endpoint) && str_contains($r->url(), 'authorizedNif=12345678Z'));
+})->with([
+    ['datadis:supplies', 'get-supplies'],
+    ['datadis:contract '.CUPS, 'get-contract-detail'],
+]);
 
 it('lists the commands of the package', function () {
     expect(array_keys(Artisan::all()))->toContain('datadis:supplies', 'datadis:contract', 'datadis:consumption', 'datadis:authorizations', 'datadis:authorize', 'datadis:authorization:cancel');

@@ -11,8 +11,7 @@ class AuthorizeCommand extends DatadisCommand
                          {--cups=* : Only these supplies (all of them if omitted)}
                          {--from= : Start of the period, as YYYY-MM-DD}
                          {--to= : End of the period, as YYYY-MM-DD}
-                         {--account= : Account of datadis-client.accounts, the default one if omitted}
-                         {--holder= : NIF of a holder who authorized the account}';
+                         {--account= : Account of datadis-client.accounts, the default one if omitted}';
 
     public $description = 'Let a third party read your supplies (changes data on Datadis)';
 

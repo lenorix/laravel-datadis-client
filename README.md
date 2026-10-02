@@ -159,7 +159,7 @@ php artisan datadis:authorize 12345678Z --cups=ES0000000000000000AA0A --from=202
 php artisan datadis:authorization:cancel 12345678Z
 ```
 
-All of them take `--account=second` and `--holder=12345678Z`. A malformed NIF, CUPS, month or date, and a month range Datadis does not serve, fail with a message and send nothing.
+All of them take `--account=second`. The ones that read (`supplies`, `contract`, `consumption`) also take `--holder=12345678Z`, to read the supplies of someone who authorized you. The authorization commands act for the account itself, so they have no `--holder` (it would suggest the operation is made for that holder); `datadis:authorizations` takes `--owner=` to list only the authorizations given by one owner. A malformed NIF, CUPS, month or date, and a month range Datadis does not serve, fail with a message and send nothing.
 
 The exit code tells a script what happened:
 
