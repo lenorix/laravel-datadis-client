@@ -109,7 +109,10 @@ class LaravelDatadisClient
      *
      * @return bool whether it was recorded
      *
-     * @throws InvalidArgumentException when a value is not valid, `$at` is in the future or the account is not configured
+     * @throws InvalidArgumentException when a value is not valid, the range is reversed, `$at` is more than ten minutes in the
+     *                                  future or the account is not configured
+     * @throws ConfigurationException when the cache repository is not a Laravel one, which cannot be given a lifetime
+     * @throws LedgerUnavailableException when the guard's store fails, or another import of the same query does not finish
      */
     public function rememberConsumption(
         Cups $cups,
@@ -142,7 +145,10 @@ class LaravelDatadisClient
      *
      * @return bool whether it was recorded
      *
-     * @throws InvalidArgumentException when a value is not valid, `$at` is in the future or the account is not configured
+     * @throws InvalidArgumentException when a value is not valid, the range is reversed, `$at` is more than ten minutes in the
+     *                                  future or the account is not configured
+     * @throws ConfigurationException when the cache repository is not a Laravel one, which cannot be given a lifetime
+     * @throws LedgerUnavailableException when the guard's store fails, or another import of the same query does not finish
      */
     public function rememberMaxPower(
         Cups $cups,
@@ -161,7 +167,10 @@ class LaravelDatadisClient
      *
      * @return bool whether it was recorded
      *
-     * @throws InvalidArgumentException when a value is not valid, `$at` is in the future or the account is not configured
+     * @throws InvalidArgumentException when a value is not valid, the range is reversed, `$at` is more than ten minutes in the
+     *                                  future or the account is not configured
+     * @throws ConfigurationException when the cache repository is not a Laravel one, which cannot be given a lifetime
+     * @throws LedgerUnavailableException when the guard's store fails, or another import of the same query does not finish
      */
     public function rememberReactive(
         Cups $cups,
