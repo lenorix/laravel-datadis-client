@@ -1,6 +1,8 @@
 <?php
 
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
@@ -140,4 +142,37 @@ it('refuses what cannot be remembered', function (Closure $call, string $message
     'a bad distributor code' => [fn () => Datadis::rememberAttempt(Endpoint::MaxPower, Cups::fromString(CUPS), 'not a code!', monthsAgo(2)), 'distributor code'],
     'a time in the future' => [fn () => Datadis::rememberAttempt(Endpoint::MaxPower, Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('+2 hours')), 'future'],
     'an account that is not configured' => [fn () => Datadis::rememberAttempt(Endpoint::MaxPower, Cups::fromString(CUPS), '2', monthsAgo(2), account: 'missing'), 'not configured'],
+]);
+
+/** An array store that notes the lifetime each key was stored with (Laravel's add() on it is a get and a put). */
+class TtlSpyStore extends ArrayStore
+{
+    /** @var array<string, int> */
+    public static array $ttls = [];
+
+    public function put($key, $value, $seconds)
+    {
+        self::$ttls[$key] = (int) $seconds;
+
+        return parent::put($key, $value, $seconds);
+    }
+}
+
+it('keeps an old attempt only for what is left of its window, not for a whole new one', function (int $hoursAgo, int $expected) {
+    TtlSpyStore::$ttls = [];
+    Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
+    config()->set('cache.stores.spy', ['driver' => 'spy']);
+    config()->set('datadis-client.cache.store', 'spy');
+
+    Datadis::rememberAttempt(Endpoint::MaxPower, Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable("-{$hoursAgo} hours"));
+
+    $ledgerKeys = array_filter(TtlSpyStore::$ttls, fn ($ttl, $key) => str_starts_with($key, 'datadis_query_'), ARRAY_FILTER_USE_BOTH);
+
+    expect($ledgerKeys)->toHaveCount(1);
+    // What is left of 24 h 10 min, give or take the seconds the test takes.
+    expect(array_values($ledgerKeys)[0])->toBeGreaterThanOrEqual($expected - 5)->toBeLessThanOrEqual($expected + 5);
+})->with([
+    'sent just now: the whole window' => [0, RequestLedger::WINDOW_SECONDS],
+    'sent 12 hours ago: half of it' => [12, RequestLedger::WINDOW_SECONDS - 12 * 3600],
+    'sent 23 hours ago: an hour and ten minutes' => [23, RequestLedger::WINDOW_SECONDS - 23 * 3600],
 ]);

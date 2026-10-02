@@ -10,10 +10,14 @@ use Lenorix\DatadisClient\Guard\AtomicStore;
  */
 final class LaravelAtomicStore implements AtomicStore
 {
-    public function __construct(private readonly Repository $cache) {}
+    /**
+     * @param  int|null  $ttlSeconds  a lifetime that replaces the one the guard asks for: for an attempt that was
+     *                                made earlier, only what is left of its window
+     */
+    public function __construct(private readonly Repository $cache, private readonly ?int $ttlSeconds = null) {}
 
     public function add(string $key, mixed $value, int $ttlSeconds): bool
     {
-        return $this->cache->add($key, $value, $ttlSeconds);
+        return $this->cache->add($key, $value, $this->ttlSeconds ?? $ttlSeconds);
     }
 }

@@ -17,7 +17,7 @@ function retryOutcome(mixed $max, mixed $base, mixed $longest): string
 {
     $whole = static function (mixed $value, int $default): ?int {
         return match (true) {
-            $value === ABSENT || $value === null => $default,
+            $value === ABSENT || $value === null || $value === '' => $default,
             is_int($value) => $value,
             is_string($value) && preg_match('/^\s*-?\d+\s*$/', $value) === 1 => (int) trim($value),
             default => null,   // a float, a word, true...
@@ -46,7 +46,7 @@ function outcomeOf(Closure $build): string
 }
 
 it('accepts exactly the retry settings that can work', function () {
-    $pool = [ABSENT, null, -1, 0, 1, 2, 5, 10, 11, '3', ' 7 ', '-2', 'many', 1.5, true, 100, 30000];
+    $pool = [ABSENT, null, '', -1, 0, 1, 2, 5, 10, 11, '3', ' 7 ', '-2', 'many', 1.5, true, 100, 30000];
 
     $this->limitTo(iterations() * 2)->forAll(
         Generators::elements(...$pool),
@@ -63,7 +63,7 @@ it('accepts exactly the retry settings that can work', function () {
 
 it('accepts exactly the HTTP stack settings that cannot reach Datadis from a test', function () {
     $this->limitTo(iterations() * 2)->forAll(
-        Generators::elements(null, '', 'laravel', 'guzzle', 'curl', 'LARAVEL', 5, false),
+        Generators::elements(null, '', 'laravel', 'guzzle', 'curl', 'LARAVEL', ' Guzzle ', 5, false),
         Generators::elements('testing', 'production', 'local'),
         Generators::bool(),
     )->then(function (mixed $stack, string $environment, bool $hasHandler) {
@@ -71,7 +71,8 @@ it('accepts exactly the HTTP stack settings that cannot reach Datadis from a tes
         config()->set('datadis-client.http.options', $hasHandler ? ['handler' => HandlerStack::create(new MockHandler)] : []);
         app()['env'] = $environment;
 
-        $effective = $stack === null || $stack === '' ? ($environment === 'testing' ? 'laravel' : 'guzzle') : $stack;
+        $normalised = is_string($stack) ? strtolower(trim($stack)) : $stack;
+        $effective = $normalised === null || $normalised === '' ? ($environment === 'testing' ? 'laravel' : 'guzzle') : $normalised;
         $expected = match (true) {
             ! in_array($effective, ['laravel', 'guzzle'], true) => 'invalid',
             $effective === 'guzzle' && $environment === 'testing' && ! $hasHandler => 'invalid',

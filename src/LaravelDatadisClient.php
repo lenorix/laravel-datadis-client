@@ -145,7 +145,9 @@ class LaravelDatadisClient
             ];
         }
 
-        // claim(), not record(): it never overwrites a newer attempt that the guard already holds.
+        // claim(), not record(): it never overwrites a newer attempt that the guard already holds. The entry
+        // lives for what is left of the window: a longer life than its time would make the guard, which treats a
+        // held key with an expired time as sent now, block the query for hours after Datadis would take it.
         return $this->ledger(new class($sentAt) implements ClockInterface
         {
             public function __construct(private readonly DateTimeImmutable $at) {}
@@ -154,7 +156,7 @@ class LaravelDatadisClient
             {
                 return $this->at;
             }
-        })->claim($username, $query) === null;
+        }, max(1, RequestLedger::WINDOW_SECONDS - max(0, $age)))->claim($username, $query) === null;
     }
 
     /**
@@ -173,7 +175,10 @@ class LaravelDatadisClient
         return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http($settings), tokenCache: $this->store());
     }
 
-    private function ledger(?ClockInterface $clock = null): RequestLedger
+    /**
+     * @param  int|null  $ttlSeconds  how long a new entry lives, when it is not the whole window
+     */
+    private function ledger(?ClockInterface $clock = null, ?int $ttlSeconds = null): RequestLedger
     {
         $store = $this->store();
 
@@ -181,7 +186,7 @@ class LaravelDatadisClient
             $store,
             new RequestFingerprinter($this->ledgerKey()),
             $clock,
-            atomic: new LaravelAtomicStore($store),
+            atomic: new LaravelAtomicStore($store, $ttlSeconds),
         );
     }
 
@@ -272,6 +277,7 @@ class LaravelDatadisClient
         $options = is_array($options) ? array_filter($options, is_string(...), ARRAY_FILTER_USE_KEY) : [];
 
         $stack = $this->config()->get('datadis-client.http.stack');
+        $stack = is_string($stack) ? strtolower(trim($stack)) : $stack;
 
         // Unset: plain Guzzle, so Laravel's events and recorders never see the login password and the token;
         // the test environment keeps Laravel's stack so Http::fake() works.
@@ -302,9 +308,9 @@ class LaravelDatadisClient
         $retries = $this->config()->get('datadis-client.http.retries');
         $retries = is_array($retries) ? $retries : [];
 
-        $max = $this->whole($retries['max'] ?? 2, 'http.retries.max');
-        $base = $this->whole($retries['base_delay_ms'] ?? 1000, 'http.retries.base_delay_ms');
-        $longest = $this->whole($retries['max_delay_ms'] ?? 30000, 'http.retries.max_delay_ms');
+        $max = $this->whole($retries, 'max', 2);
+        $base = $this->whole($retries, 'base_delay_ms', 1000);
+        $longest = $this->whole($retries, 'max_delay_ms', 30000);
 
         if ($max < 0 || $max > 10) {
             throw new ConfigurationException('datadis-client.http.retries.max must be between 0 and 10.');
@@ -321,13 +327,24 @@ class LaravelDatadisClient
         return new RetryingClient($client, $max, $base, $longest);
     }
 
-    private function whole(mixed $value, string $key): int
+    /**
+     * A whole number of `http.retries`, or its default when it is not set (an empty `.env` value is not set).
+     *
+     * @param  array<array-key, mixed>  $retries
+     */
+    private function whole(array $retries, string $key, int $default): int
     {
+        $value = $retries[$key] ?? null;
+
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
         if (is_int($value) || (is_string($value) && preg_match('/^-?\d+$/', trim($value)) === 1)) {
             return (int) $value;
         }
 
-        throw new ConfigurationException("datadis-client.{$key} must be a whole number.");
+        throw new ConfigurationException("datadis-client.http.retries.{$key} must be a whole number.");
     }
 
     private function config(): Config
