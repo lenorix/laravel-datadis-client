@@ -51,11 +51,14 @@
     "scripts": {
         "post-autoload-dump": "@composer run prepare",
         "prepare": "@php vendor/bin/testbench package:discover --ansi",
-        "analyse": "vendor/bin/phpstan analyse",
+        "phpstan": "vendor/bin/phpstan analyse",
+        "analyse": "@phpstan",
         "test": "vendor/bin/pest",
         "test-pbt": "DATADIS_PBT_ITERATIONS=2000 vendor/bin/pest tests/Property",
         "test-coverage": "XDEBUG_MODE=coverage vendor/bin/pest --coverage --min=100",
-        "format": "vendor/bin/pint"
+        "pint": "vendor/bin/pint",
+        "format": "@pint",
+        "lint": "vendor/bin/pint --test"
     },
     "config": {
         "sort-packages": true,
