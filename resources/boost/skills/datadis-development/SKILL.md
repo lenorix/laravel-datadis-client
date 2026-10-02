@@ -33,10 +33,14 @@ $contract = $client->getContractDetailOf($supply)->records[0] ?? null;
 $hourly   = $client->getConsumptionDataOf($supply, Month::of(2026, 7));
 $quarters = $client->getConsumptionDataOf($supply, $from, $to, MeasurementType::QuarterHourly);   // $from, $to: Month values
 $peaks    = $client->getMaxPowerOf($supply, $from, $to);              // one row per tariff period, kW
+$today    = $client->getLatestConsumptionDataOf($supply);            // the daily refresh: its range changes from one day to the next
+$peak     = $client->getLatestMaxPowerOf($supply);                    // the same, for maximum power
 $reactive = $client->getReactiveDataOf($supply, $from, $to);          // API v2 only
 $client->getSupplies(); $client->getDistributorsWithSupplies(); $client->getGroups();   // getGroups: API v2 only
 $client->listAuthorization();                                         // read only
 ```
+
+`getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()` are for a job that runs every day: the range alternates between the current month and the previous plus the current month, so today's query is never yesterday's. Run it once a day; it throws `InvalidRequestException` when the contract has nothing to refresh this month. Reactive energy has no such method: ask it for closed months.
 
 The consumption and maximum power calls are subject to the 24 hour rule, which the Datadis manual documents (sections 4.3 and 4.4). The client applies it to the reactive call too, to be safe. The others are free to repeat.
 

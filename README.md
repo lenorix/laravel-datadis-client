@@ -177,6 +177,19 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 - **Refresh the current month with `getLatestConsumptionDataOf()`** (and `getLatestMaxPowerOf()`) in a daily job. The guard keeps a query for 24 hours and 10 minutes, so asking the same range at the same time the next day is refused; these methods alternate the range from one day to the next, so nothing repeats. One run a day.
 - **Never loop over a data query**, and never add a retry of your own around one.
 
+### Refresh the current month every day
+
+Asking the same range every day is refused: the guard keeps a query for 24 hours and 10 minutes. For a daily job use the `getLatest` methods, which alternate the range from one day to the next:
+
+```php
+$supply = $client->findSupply(Cups::fromString($cups));
+
+$consumption = $client->getLatestConsumptionDataOf($supply);   // the current month, or the previous one plus it
+$maxPower = $client->getLatestMaxPowerOf($supply);
+```
+
+The current month is always in the range, so it is fresh every day; the previous month is refreshed every second day. Run it once a day. Reactive energy has no such method (it shares its guard entry with maximum power): ask it for closed months. The `datadis-sync` Boost skill has a complete job.
+
 ### Moving from your own record of queries
 
 The guard only knows the queries sent through this package. If your app kept its own record before (a table, say), the first run after the switch could repeat a query sent in the last 24 hours and 10 minutes. Datadis would refuse it, and count it.

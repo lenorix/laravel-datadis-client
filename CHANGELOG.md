@@ -2,9 +2,9 @@
 
 All notable changes to `laravel-datadis-client` will be documented in this file.
 
-## Unreleased
+## 0.2.0 - 2026-10-02
 
-- **Requires `lenorix/datadis-client` ^0.4.0**, which adds `getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()`: a daily job refreshes the current month with a range that alternates from one day to the next, so no query repeats within the 24 hour window. The docs and the sync skill use them instead of repeating a query every second day.
+- **Requires `lenorix/datadis-client` ^0.4.0**, which adds `getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()`: a daily job refreshes the current month with a range that alternates from one day to the next, so no query repeats within the 24 hour window. The docs and the sync skill use them instead of repeating a query every second day. The README, the guideline and the development skill explain the daily refresh and that reactive energy has no such method.
 - **License**: The Unlicense (public domain), instead of MIT.
 
 ## 0.1.0 - 2026-10-02
