@@ -27,7 +27,7 @@ $peaks    = $client->getMaxPowerOf($supply, $from, $to);              // one row
 $reactive = $client->getReactiveDataOf($supply, $from, $to);          // API v2 only
 $client->getDistributorsWithSupplies();
 $client->listAuthorization();                                         // read only
-// These two CHANGE data on Datadis (access to the supplies): only when the user asks for it.
+// Writes: give or take away a third party's access to the supplies. Never retried; they return Datadis's answer text.
 $client->newAuthorization($nif); $client->cancelAuthorization($nif);
 $client->getGroups();                                                 // API v2 only
 ```

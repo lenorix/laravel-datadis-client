@@ -104,9 +104,29 @@ php artisan datadis:supplies [--account=other] [--holder=00000000T]
 
 With `DATADIS_HTTP_STACK=laravel` (the default only in the test environment), Laravel's request events, global HTTP middleware and recorders such as Telescope or Nightwatch see the login request (the password) and its answer (the token). Outside tests keep the default (`guzzle`), or exclude `datadis.es` from the recorders and from the request bodies they keep. With `guzzle`, `Http::fake()` does not apply to these calls: fake Datadis in tests, where the stack is `laravel`.
 
-### Operations that change data
+### Authorizations and partner accounts: read and write
 
-The facade and the injected client are the full client, so they also offer the calls that change data on Datadis: `newAuthorization()` and `cancelAuthorization()` (give or take away a third party's access to your supplies) and `partnerDeleteUser()` (partner accounts). They are never retried, and Datadis documents the first two for API v1; their answers are not verified yet. If your code only reads, type-hint what you use and keep these out of reach, for example behind your own small service class.
+The package gives the whole client, so besides reading supplies, contracts and data you can also manage access from Laravel:
+
+```php
+use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\DatadisClient\Values\Nif;
+
+$nif = Nif::fromString('12345678Z');
+
+Datadis::newAuthorization($nif);                                  // let someone read all your supplies
+Datadis::newAuthorization($nif, $from, $to, Cups::fromString($cups)); // or some, for a period
+Datadis::cancelAuthorization($nif);
+Datadis::listAuthorization();                                     // who can read what
+Datadis::getGroups();                                             // API v2
+Datadis::partnerUserList();                                       // partner accounts
+Datadis::partnerDeleteUser($nif);
+Datadis::partnerAgreementDate();
+```
+
+Every method of the client works the same through the facade, the injected `DatadisClient` and `Datadis::account('name')`; the open data ones (`apiSearch()`, `apiSumSearch()`, `apiSearchAuto()`, `apiSumSearchAuto()`, `apiSearchAll()`, `apiSearchAutoAll()`) through `Datadis::publicApi()` or the injected `PublicApiClient`. The test suite calls each of them, and fails if the client gains a method it does not cover.
+
+The calls that change data (`newAuthorization()`, `cancelAuthorization()`, `partnerDeleteUser()`) are never retried, and Datadis documents the authorization ones for API v1 with answers that are not verified yet: check the result text they return.
 
 ### Queued jobs
 

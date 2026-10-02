@@ -8,7 +8,7 @@ First release. Laravel integration of [`lenorix/datadis-client`](https://github.
 
 ### Added
 
-- **Client**: `DatadisClient` and `PublicApiClient` in the container, the `LaravelDatadisClient` facade (the default account, plus `account()` and `publicApi()`), named accounts and holders (`forHolder()`), and `php artisan datadis:supplies`.
+- **Client**: the whole client, read and write (supplies, contracts, consumption, power, reactive energy, authorizations, groups, partner accounts and the open data), with a test for every method; `DatadisClient` and `PublicApiClient` in the container, the `LaravelDatadisClient` facade (the default account, plus `account()` and `publicApi()`), named accounts and holders (`forHolder()`), and `php artisan datadis:supplies`.
 - **Configuration**: the credentials of the account named `default` come from `services.datadis` and win over `config/datadis-client.php` however a setting is spelled (`api_version` or `api-version`) and ignore blank values. Settings for other accounts, the cache store, the ledger key, the HTTP stack and the log level live in `config/datadis-client.php`.
 - **24 hour guard**: the login token and the record of guarded queries live in a Laravel cache store shared by all workers, and recording a query is atomic (`Cache::add()`), so only one of several simultaneous workers sends it. A `cache.store` that is not a store name fails instead of using the default store.
 - **HTTP stack** (`http.stack`, `http.options`): plain Guzzle by default, so Laravel's events and recorders never see the login password and token; `laravel` in the test environment, where `Http::fake()` works. The package refuses plain Guzzle in tests without a mock handler.
