@@ -29,6 +29,7 @@ A planning job decides which months are worth asking for, and one queued job per
 
 ```php
 use DateTimeImmutable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Lenorix\DatadisClient\DatadisClient;
@@ -60,19 +61,22 @@ class PlanSupplySync implements ShouldQueue
         $now = new DateTimeImmutable;
         $current = Month::current($now);
 
-        // Nothing above can fail after this point, so a retry of the job never dispatches twice.
         // One month each, one queued job per range: the last $months months (24 at most).
+        // If a dispatch fails halfway and the job is retried, the ranges already queued are not queued again:
+        // the range jobs are unique per supply and range.
         foreach (MonthPlanner::ranges($current->addMonths(-($this->months - 1)), $current, $now, supply: $supply) as [$from, $to]) {
             SyncSupplyRange::dispatch($supply->cups, $supply->distributorCode, $supply->pointType, $from->format(), $to->format());
         }
     }
 }
 
-class SyncSupplyRange implements ShouldQueue
+class SyncSupplyRange implements ShouldQueue, ShouldBeUnique
 {
     use Queueable;
 
     public int $tries = 1;      // a data query must not be repeated by the queue
+
+    public int $uniqueFor = 3600; // the same range is not queued twice within an hour
 
     public int $timeout = 600;  // a login (up to 3 attempts of 120 s) and the query (120 s): see "Timeouts and queues"
 
@@ -83,6 +87,11 @@ class SyncSupplyRange implements ShouldQueue
         public string $from,
         public string $to,
     ) {}
+
+    public function uniqueId(): string
+    {
+        return "{$this->cups}:{$this->from}:{$this->to}";
+    }
 
     public function handle(DatadisClient $client): void
     {
@@ -112,10 +121,14 @@ Run the backfill once, and schedule only the months that can still change:
 ```php
 PlanSupplySync::dispatch($cups, months: 24);   // once: the whole history
 
-Schedule::job(new PlanSupplySync($cups, months: 2))->cron('0 4 */2 * *');   // every second day: this month and the previous one
+Schedule::job(new PlanSupplySync($cups, months: 2))
+    ->dailyAt('04:00')
+    ->when(fn () => intdiv(now()->timestamp, 86400) % 2 === 0);   // every second day: this month and the previous one
 ```
 
 Every second day, not every day: the guard keeps a query for 24 hours and 10 minutes (a margin for clock differences with Datadis). A job that repeats the same query at the same time each day is refused locally every other run. Those refused runs are harmless, since the job catches `RepetitionWindowException`, but they fetch nothing.
+
+Count the days (the `when()` above) instead of using `cron('0 4 */2 * *')`: that runs on the odd days of the month, so the 31st and the 1st of the next month are consecutive and the query is refused once there.
 
 ## Rules of thumb
 

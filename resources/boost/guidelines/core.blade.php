@@ -39,7 +39,7 @@ public function handle(DatadisClient $client): void
 ### Configuration
 
 - Credentials: `config/services.php`, key `datadis` (`DATADIS_USERNAME`, `DATADIS_PASSWORD`). Other accounts and settings: `config/datadis-client.php`. Never hard-code them.
-- `datadis-client.cache.store`: a store with an atomic `add()` (Redis, Memcached, database). `file` only coordinates one server and `array` protects nothing.
+- `datadis-client.cache.store`: a store with an atomic `add()` (Redis, Memcached, database). `file` only coordinates one server, and `array` only protects within one process, not across workers.
 - `datadis-client.ledger.key` (`DATADIS_LEDGER_KEY`): set it; otherwise `APP_KEY` is used and rotating it makes the guard forget the last 24 hours.
 - Harmless reads are retried by the package after network errors and 502, 503 and 504 (`datadis-client.http.retries`); data queries and writes never are.
 
