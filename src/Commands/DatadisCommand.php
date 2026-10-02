@@ -15,8 +15,8 @@ use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient;
-use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Helper\TableStyle;
+use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * The base of the artisan commands: the account and holder options, and a clean failure for what Datadis
@@ -38,14 +38,27 @@ abstract class DatadisCommand extends Command
     abstract protected function perform(DatadisClient $client): int;
 
     /*
-     * What the commands print can come from Datadis or from the user (an account name, an answer, a distributor's
-     * name). The console formatter would read `<fg=foo>` in it as a style and fail, or drop `<info>`: it is printed as
-     * it is.
+     * What the commands print can come from Datadis or from the user (an account name, a distributor's name, an
+     * answer). The console formatter would read `<fg=foo>` in it as a style and fail, and a wrapper of the output
+     * that formats twice (the one Laravel's skeleton installs for AI agents) undoes any escape. So text with a `<`
+     * is written raw, unformatted, and the cells of a table, which cannot be, have their `<` swapped for a
+     * look-alike that cannot open a tag.
      */
 
     public function line($string, $style = null, $verbosity = null)
     {
-        parent::line(OutputFormatter::escape((string) $string), $style, $verbosity);
+        $string = (string) $string;
+
+        if (str_contains($string, '<')) {
+            /** @var int<0, 511> $type */
+            $type = $this->parseVerbosity($verbosity) | OutputInterface::OUTPUT_RAW;
+
+            $this->output->writeln($string, $type);
+
+            return;
+        }
+
+        parent::line($string, $style, $verbosity);
     }
 
     // Not parent::warn() and parent::error(): they render through components that read the text as markup.
@@ -66,9 +79,9 @@ abstract class DatadisCommand extends Command
      */
     public function table($headers, $rows, $tableStyle = 'default', array $columnStyles = [])
     {
-        $escape = static fn (mixed $cell): mixed => is_string($cell) ? OutputFormatter::escape($cell) : $cell;
+        $neutral = static fn (mixed $cell): mixed => is_string($cell) ? str_replace('<', '‹', $cell) : $cell;
 
-        parent::table($headers, array_map(static fn (mixed $row): mixed => is_array($row) ? array_map($escape, $row) : $row, (array) $rows), $tableStyle, $columnStyles);
+        parent::table($headers, array_map(static fn (mixed $row): mixed => is_array($row) ? array_map($neutral, $row) : $row, (array) $rows), $tableStyle, $columnStyles);
     }
 
     /**
