@@ -15,4 +15,4 @@ First release. Laravel integration of [`lenorix/datadis-client`](https://github.
 - **Retries** (`http.retries`, `DATADIS_HTTP_RETRIES`): network failures and 502, 503 and 504 answers are retried with backoff for the login, the lists and the reads, never for data queries nor for the calls that change data.
 - **Logging**: a refused repeated query (`RepetitionWindowException`) is reported as a warning (`report_level`, a PSR-3 level or `null`).
 - **Laravel Boost**: a guideline and the `datadis-development`, `datadis-sync` and `datadis-testing` skills.
-- **Tests and CI**: Pest and Eris property tests (200 cases each by default, `composer test-pbt` for 2000), a multi-process concurrency test, 100 % coverage of `src/` enforced in CI, PHPStan at level max, Pint, a dependency audit, and no test reaches the network.
+- **Tests and CI**: Pest and Eris property tests (200 cases each by default, `composer test-pbt` for 2000), a multi-process concurrency test, properties for configuration combinations and command inputs, 100 % coverage of `src/` enforced in CI, PHPStan at level max, Pint, a dependency audit, and no test reaches the network.
