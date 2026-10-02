@@ -61,7 +61,7 @@ $client->partnerUserList(); $client->partnerAgreementDate();      // partner rea
 
 ### Invoice periods
 
-`BillingCycle::monthlyFrom(15)->lastEndedPeriod(now())` gives the last closed period of a cycle that starts on the 15th, and `BillingPeriod::between($firstDay, $lastDay)` takes the dates of an invoice, which are the reliable source: Datadis does not publish the billing day, the retailer sets it and may move it. A period gives the months to ask for (`months()`), the readings that fall in it (`readingsOf()`), their exact total (`totalKWh()`) and whether the readings reach its end (`isCoveredBy()`). Dates are taken as they are on the Madrid calendar. This comes from the client's own documentation, not from a regulation: do not present the cycle as a rule.
+`BillingCycle::monthlyFrom(15)->lastEndedPeriod(now())` gives the last closed period of a cycle that starts on the 15th, and `BillingPeriod::between($firstDay, $lastDay)` takes the dates of an invoice, which are the reliable source: Datadis does not publish the billing day, the retailer sets it and may move it. A period gives the months to ask for (`months()`), the readings that fall in it (`readingsOf()`), their exact total (`totalKWh()`) and whether the readings reach its end (`isCoveredBy()`). Dates are taken as they are on the Madrid calendar. This comes from the client's own documentation, not from a regulation: do not present the cycle as a rule. A period over the previous month and the current one is the same guarded query as the daily refresh asks on every other day: whichever runs second throws `RepetitionWindowException`. If a daily refresh runs, compute the period from the readings it already returned and stored, or catch the exception.
 
 ### Open data and the terminal
 

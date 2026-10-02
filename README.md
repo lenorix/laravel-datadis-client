@@ -151,7 +151,9 @@ $period->totalKWh($result->records);       // the exact total, as text
 $period->isCoveredBy($result->records);    // false while Datadis has not published up to its last day
 ```
 
-The dates of an invoice are the reliable source; a cycle from a day is a guess that the retailer may move. The ranges are asked once like any other guarded query.
+The dates of an invoice are the reliable source; a cycle from a day is a guess that the retailer may move.
+
+This is a guarded query like any other, and it can be the same one as the daily refresh: on the days the refresh asks the previous month and the current one, a period over those two months is that very query, and whichever runs second throws `RepetitionWindowException`. If a daily refresh runs, compute the period from the readings it already returned (and stored), or catch the exception.
 
 ### Read the open data
 
@@ -198,7 +200,7 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 
 ### Know until when a query is blocked
 
-A refused repeat carries the answer: `RepetitionWindowException::$availableAt` is when the same query is allowed again, and `$lastAttemptAt` when it was last sent. Its message says it too, so the log line shows it. To look without sending or claiming anything (a command, a screen), ask the client:
+A refused repeat carries the answer: When the package refused the query, `RepetitionWindowException::$availableAt` is when the same query is allowed again, and `$lastAttemptAt` when it was last sent (both are `null` when Datadis itself answered with a 429). Its message says it too, so the log line shows it. To look without sending or claiming anything (a command, a screen), ask the client:
 
 ```php
 $until = $client->consumptionDataOfBlockedUntil($supply, $month);   // ?DateTimeImmutable, null when it may be sent now
@@ -247,10 +249,10 @@ foreach (SentQuery::where('sent_at', '>', now()->subHours(25))->get() as $sent) 
 }
 ```
 
-- **`rememberConsumption()`**, **`rememberMaxPower()`** and **`rememberReactive()`** match the three queries the guard covers. Consumption takes the point type, and the measurement type and the holder (`authorizedNif:`) if you used them. Maximum power and reactive energy take only the CUPS, the distributor code and the months, which is all Datadis keys them on. They are the same entry for the guard: remembering one blocks the other, as sending one does.
+- **`LaravelDatadisClient::rememberConsumption()`**, **`rememberMaxPower()`** and **`rememberReactive()`** (the facade and the manager, not the injected client) match the three queries the guard covers. Consumption takes the point type, and the measurement type and the holder (`authorizedNif:`) if you used them. Maximum power and reactive energy take only the CUPS, the distributor code and the months, which is all Datadis keys them on. They are the same entry for the guard: remembering one blocks the other, as sending one does.
 - The order of the history does not matter, and it may hold the same query more than once: the guard keeps the newest attempt of each query, since its window is the one that ends last. A call returns `true` when it recorded the attempt, and `false` when the attempt is older than the window or the guard already holds this one or a newer one. It never takes a newer attempt back to an older time.
 - The attempt is remembered for what is left of its window: one sent 23 hours ago blocks a repeat for one more hour and ten minutes. `at` must be a `DateTimeInterface` (a date column cast by Eloquent, not a string). A time more than ten minutes ahead of now, a reversed range or a value Datadis would not accept throws an `InvalidRequestException` before anything is recorded. A time that is wrongly in the past is **not** caught: a UTC wall clock read as Madrid time lands one or two hours early, and the protection then ends that much early, so Datadis would refuse and count the repeat. Check the timezone of the column; if you are unsure of it, pass `at: now()` (it over-protects, which is always safe).
-- The client you inject has the same imports under its own names (`rememberConsumptionData($sentAt, ...)`, `rememberMaxPowerOf($sentAt, $supply, ...)`...), which do not take the lock above: use the facade methods for a history.
+- Use these three methods of `LaravelDatadisClient` for a history. The injected client has imports of its own (`rememberConsumptionData($sentAt, ...)`, `rememberMaxPower($sentAt, $cups, ...)`, `rememberMaxPowerOf($sentAt, $supply, ...)`...) with another order of arguments (the time first), and they do **not** take the lock: that includes the ones reached through the facade, which forwards what it does not define to the client.
 - Pass `account: 'second'` for a named account. Without it the entries are kept for the default account only, and the other accounts stay unguarded.
 - Each import runs under a lock on your cache, one for the account (named from a keyed hash, never from the NIF), so two imports cannot leave the older time. If another import does not finish within two seconds the call throws a `LedgerUnavailableException`. On a store without locks, import from one process.
 - **Stop the workers while you import** (pause the queue and the scheduler). The import never moves back a newer attempt that it reads, but the lock only serialises imports against each other: a worker that sends at the exact moment of an overwrite can lose its time. Only the pause rules that out.
@@ -288,7 +290,7 @@ Http::fake([
 
 - Do not set `DATADIS_HTTP_STACK=guzzle` in a `.env` your tests load: the package refuses to build the client, because a test would reach the real Datadis.
 - Harmless reads are retried with real waits (1 and 2 seconds by default). In tests that fail a call, set `config()->set('datadis-client.http.retries', ['max' => 0])`, or the delays to 1 ms (`'base_delay_ms' => 1, 'max_delay_ms' => 1`), so they do not sleep.
-- The package takes its time from the application, so `travelTo()` and `Carbon::setTestNow()` move the guard, the range of the daily refresh and the life of the token together: a test can run a daily job over several days. Give the fake token an `exp` from `now()` (`now()->addDay()->timestamp`), not from `time()`, or a test that travels logs in again.
+- The package takes its time from the application, so `travelTo()` and `Carbon::setTestNow()` move the guard, the range of the daily refresh and the life of the token together: a test can run a daily job over several days. Give the fake token an `exp` from `now()` (`now()->addDay()->timestamp`), not from `time()`, and answer the login with a closure (`'*/nikola-auth/tokens/login' => fn () => Http::response(...)`): a fixed body stays expired once the test has travelled.
 - To fake Datadis outside `testing`, set `DATADIS_HTTP_STACK=laravel`, or give a Guzzle mock handler with `config()->set('datadis-client.http.options.handler', $handlerStack)`.
 
 ## Configuration
