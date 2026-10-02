@@ -17,7 +17,7 @@ function fakeForCommands(array $answers = []): void
             'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
         ]], 'distributorError' => []]),
         '*/get-contract-detail*' => $json(['contract' => [[
-            'cups' => CUPS, 'distributor' => 'EDISTRIBUCION', 'marketer' => 'A MARKETER', 'accessFare' => 'BAJA TENSION y POTENCIA <= 15 kW',
+            'cups' => CUPS, 'distributor' => 'A DISTRIBUTOR', 'marketer' => 'A MARKETER', 'accessFare' => 'BAJA TENSION y POTENCIA <= 15 kW',
             'contractedPowerkW' => [3.45, 3.45], 'startDate' => '2020/01/01', 'endDate' => '',
         ]], 'distributorError' => []]),
         '*/get-consumption-data*' => $json(['timeCurve' => [[

@@ -7,7 +7,7 @@ description: Write code that reads Datadis data with lenorix/laravel-datadis-cli
 
 ## When to use this skill
 
-Use it when code calls `DatadisClient` or `PublicApiClient`, or computes something from their results (consumption totals, tariff periods, billing). For jobs that sync data on a schedule also read `datadis-sync`; for tests read `datadis-testing`.
+Use it when code calls `DatadisClient` or `PublicApiClient`, or computes something from their results (consumption totals, tariff periods, billing). For what a field or a tariff means read `datadis-electricity-domain`; for jobs that sync data on a schedule read `datadis-sync`; for tests read `datadis-testing`.
 
 ## The steps of every data call
 

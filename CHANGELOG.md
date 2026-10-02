@@ -15,6 +15,6 @@ First release. Laravel integration of [`lenorix/datadis-client`](https://github.
 - **HTTP stack** (`http.stack`, `http.options`): plain Guzzle by default, so Laravel's events and recorders never see the login password and token; `laravel` in the test environment, where `Http::fake()` works. The package refuses plain Guzzle in tests without a mock handler.
 - **Retries** (`http.retries`, `DATADIS_HTTP_RETRIES`): network failures and 502, 503 and 504 answers are retried with backoff for the login, the lists and the reads, never for data queries nor for the calls that change data.
 - **Logging**: a refused repeated query (`RepetitionWindowException`) is reported as a warning (`report_level`, a PSR-3 level or `null`).
-- **Laravel Boost**: a guideline and the `datadis-development`, `datadis-sync` and `datadis-testing` skills.
+- **Laravel Boost**: a guideline and the `datadis-development`, `datadis-electricity-domain`, `datadis-sync` and `datadis-testing` skills.
 - **Documentation**: a README that goes straight to installing and using the package, `SECURITY.md` and `CONTRIBUTING.md`; every PHP example of the README and of the Boost resources is parse-tested.
 - **Tests and CI**: Pest and Eris property tests (200 cases each by default, `composer test-pbt` for 2000), a multi-process concurrency test, properties for configuration combinations and command inputs, 100 % coverage of `src/` enforced in CI, PHPStan at level max, Pint, a dependency audit, a gitleaks scan of the history, and no test reaches the network.

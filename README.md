@@ -222,6 +222,7 @@ The package ships [Laravel Boost](https://laravel.com/docs/boost) resources. Run
 
 - **Guideline** (always loaded): conventions and the rules not to break.
 - **`datadis-development`**: calls, results and errors.
+- **`datadis-electricity-domain`**: the Spanish electricity rules behind the data: CUPS, tariffs, periods, power and reactive energy.
 - **`datadis-sync`**: scheduled jobs and backfills.
 - **`datadis-testing`**: faking Datadis in tests.
 

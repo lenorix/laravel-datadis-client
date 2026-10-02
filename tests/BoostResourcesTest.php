@@ -18,7 +18,7 @@ it('ships a Boost guideline that compiles', function () {
 
 it('ships the Boost skills', function () use ($skills) {
     expect(array_map(fn ($p) => basename(dirname($p)), $skills))
-        ->toEqualCanonicalizing(['datadis-development', 'datadis-sync', 'datadis-testing']);
+        ->toEqualCanonicalizing(['datadis-development', 'datadis-electricity-domain', 'datadis-sync', 'datadis-testing']);
 });
 
 it('gives every skill valid frontmatter named after its folder', function (string $path) {

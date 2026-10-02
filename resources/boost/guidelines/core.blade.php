@@ -45,6 +45,7 @@ public function handle(DatadisClient $client): void
 
 ### More detail
 
-- `datadis-development`: calls, results, errors and tariff periods.
+- `datadis-development`: calls, results and errors.
+- `datadis-electricity-domain`: CUPS, access tariffs, periods P1 to P6, power, reactive energy and territories.
 - `datadis-sync`: scheduled jobs and backfills.
 - `datadis-testing`: faking Datadis with `Http::fake()`.
