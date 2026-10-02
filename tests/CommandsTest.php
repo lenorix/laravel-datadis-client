@@ -306,3 +306,44 @@ it('still takes --holder where it reads the supplies of a holder', function (str
 it('lists the commands of the package', function () {
     expect(array_keys(Artisan::all()))->toContain('datadis:supplies', 'datadis:contract', 'datadis:consumption', 'datadis:authorizations', 'datadis:authorize', 'datadis:authorization:cancel');
 });
+
+it('prints every column of the supplies, the contract, the readings and the authorizations', function (string $command, array $headers, array $cells) {
+    fakeForCommands();
+
+    [$code, $output] = runCommand($command);
+
+    expect($code)->toBe(0);
+    expect($output)->toContain(...$headers);
+    expect($output)->toContain(...$cells);
+})->with([
+    'supplies' => ['datadis:supplies', ['CUPS', 'Distributor', 'Point type', 'Valid from', 'Valid to', 'Queryable'], [CUPS, '| X', '| 5', '2020-01-01', 'yes']],
+    'contract' => ['datadis:contract '.CUPS, ['Distributor', 'Marketer', 'Access tariff', 'Contracted power (kW)', 'From', 'To'], ['A DISTRIBUTOR', 'A MARKETER', 'T20TD', '3.45 / 3.45', '2020-01-01', 'open']],
+    'consumption' => ['datadis:consumption '.CUPS.' '.monthsAgo()->format(), ['Date', 'Time', 'kWh', 'Method'], ['2026/07/01', '01:00', '0.123', 'Real']],
+    'authorizations' => ['datadis:authorizations', ['Owner', 'Requester', 'CUPS', 'Status', 'From', 'To'], ['00000000T', '12345678Z', CUPS, 'ACTIVE', '2026-01-01', '2026-12-31']],
+]);
+
+it('shows the tariff text when the access tariff is not one of the known ones', function () {
+    fakeForCommands(['*/get-contract-detail*' => Http::response(['contract' => [[
+        'cups' => CUPS, 'accessFare' => 'SOMETHING UNKNOWN', 'contractedPowerkW' => [3.45, 3.45, 5.0], 'startDate' => '2020/01/01', 'endDate' => '2030/01/01',
+    ]], 'distributorError' => []])]);
+
+    [$code, $output] = runCommand('datadis:contract '.CUPS);
+
+    expect($code)->toBe(0);
+    expect($output)->toContain('SOMETHING UNKNOWN', '3.45 / 3.45 / 5', '2030-01-01');
+});
+
+it('takes an empty option as not given', function (string $command, Closure $check) {
+    fakeForCommands();
+
+    [$code] = runCommand($command);
+
+    expect($code)->toBe(0);
+    $check();
+})->with([
+    'an empty holder' => ['datadis:supplies --holder=', fn () => Http::assertSent(fn (Request $r) => str_contains($r->url(), 'get-supplies') && ! str_contains($r->url(), 'authorizedNif'))],
+    'an empty account' => ['datadis:supplies --account=', fn () => Http::assertSent(fn (Request $r) => str_contains($r->url(), 'login') && $r['username'] === '00000000T')],
+    'an empty last month' => ['datadis:consumption '.CUPS.' '.monthsAgo(2)->format().' --to=', fn () => Http::assertSent(fn (Request $r) => str_contains($r->url(), 'get-consumption-data') && str_contains($r->url(), 'startDate='.urlencode(monthsAgo(2)->format())) && str_contains($r->url(), 'endDate='.urlencode(monthsAgo(2)->format())))],
+    'empty dates' => ['datadis:authorize 12345678Z --from= --to=', fn () => Http::assertSent(fn (Request $r) => str_contains($r->url(), 'new-authorization') && ! str_contains($r->url(), 'startDate') && ! str_contains($r->url(), 'endDate'))],
+    'an empty owner' => ['datadis:authorizations --owner=', fn () => Http::assertSent(fn (Request $r) => str_contains($r->url(), 'list-authorization') && ! str_contains($r->url(), 'ownerNif'))],
+]);

@@ -2,10 +2,13 @@
 
 namespace Lenorix\LaravelDatadisClient;
 
+use Closure;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Foundation\Application;
@@ -15,6 +18,7 @@ use Lenorix\DatadisClient\Data\Supply;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\DatadisConfig;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
+use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\DatadisClient\Http\GuzzleClientFactory;
@@ -98,8 +102,10 @@ class LaravelDatadisClient
      *
      * Give the query as it was sent (the point type, the measurement type and the holder, if you used one) and,
      * in `$at`, when. It is remembered for what is left of the window, so a query sent 23 hours ago blocks a
-     * repeat for one more hour and ten minutes. An attempt older than the window, or one the guard already knows,
-     * is not recorded. Do it once, before any worker sends a guarded query with the new client.
+     * repeat for one more hour and ten minutes. An attempt older than the window is not recorded. The guard keeps
+     * the newest attempt of each query, whatever order a history is given in: a held attempt that is older is
+     * replaced, and one at the same time or newer is left alone. Do it before any worker sends a guarded query
+     * with the new client, with the workers paused.
      *
      * @return bool whether it was recorded
      *
@@ -179,6 +185,10 @@ class LaravelDatadisClient
             throw new InvalidArgumentException('The distributor code must be 1 to 10 letters, digits, dashes or underscores.');
         }
 
+        if ($endDate !== null && $startDate->isAfter($endDate)) {
+            throw new InvalidArgumentException('The first month must not be after the last one.');
+        }
+
         return [
             'cups' => $cups->value(),
             'distributorCode' => $distributorCode,
@@ -216,31 +226,66 @@ class LaravelDatadisClient
                 return $this->at;
             }
         };
-        $remaining = max(1, RequestLedger::WINDOW_SECONDS - max(0, $age));
+        // At least one second, since the age is below the window; a time a few minutes ahead (a skewed clock, within
+        // the guard's own tolerance) lives that much longer than the window.
+        $remaining = RequestLedger::WINDOW_SECONDS - $age;
         $guard = $this->ledger();
         $remembered = $this->ledger($then, $remaining);
 
-        $known = $guard->lastAttempt($username, $query);
+        return $this->exclusively($username, $query, function () use ($guard, $remembered, $username, $query, $sentAt): bool {
+            $known = $guard->lastAttempt($username, $query);
 
-        if ($known !== null && $known->getTimestamp() >= $sentAt->getTimestamp()) {
-            return false;   // the guard already holds this attempt, or a newer one
-        }
+            if ($known !== null && $known->getTimestamp() >= $sentAt->getTimestamp()) {
+                return false;   // the guard already holds this attempt, or a newer one
+            }
 
-        // A free key is taken in one step, so a worker that sends now cannot slip in between.
-        if ($known === null && $remembered->claim($username, $query) === null) {
+            // A free key is taken in one step, so a worker that sends now cannot slip in between.
+            if ($known === null && $remembered->claim($username, $query) === null) {
+                return true;
+            }
+
+            // The key is held: by an older attempt, by an entry whose time has expired, or by a worker that has just sent.
+            $known = $guard->lastAttempt($username, $query);
+
+            if ($known !== null && $known->getTimestamp() >= $sentAt->getTimestamp()) {
+                return false;
+            }
+
+            $remembered->record($username, $query);   // overwrite it with this attempt, the newer one
+
             return true;
+        });
+    }
+
+    /**
+     * Runs the import of one attempt with nobody else importing the same query: two imports that both read the
+     * held attempt before either writes would leave the older time, since the overwrite is not a compare and set.
+     * A store without locks cannot serialise them: then only one process may import.
+     *
+     * @template T
+     *
+     * @param  array<string, string|int|null>  $query
+     * @param  Closure(): T  $import
+     * @return T
+     *
+     * @throws LedgerUnavailableException when another import of the same query does not finish
+     */
+    private function exclusively(string $username, array $query, Closure $import): mixed
+    {
+        $store = $this->store();
+        $provider = $store instanceof CacheRepository ? $store->getStore() : null;
+
+        if (! $provider instanceof LockProvider) {
+            return $import();
         }
 
-        // The key is held: by an older attempt, by an entry whose time has expired, or by a worker that has just sent.
-        $known = $guard->lastAttempt($username, $query);
+        $name = 'datadis_import_'.substr((new RequestFingerprinter($this->ledgerKey()))->fingerprint($username, $query), 0, 40);
 
-        if ($known !== null && $known->getTimestamp() >= $sentAt->getTimestamp()) {
-            return false;
+        try {
+            return $provider->lock($name, 30)->block(2, $import);
+        } catch (LockTimeoutException $e) {
+            throw new LedgerUnavailableException('Another import of the same query did not finish: import the history from one process.', previous: $e);
         }
-
-        $remembered->record($username, $query);   // overwrite it with this attempt, the newer one
-
-        return true;
     }
 
     /**
@@ -250,7 +295,13 @@ class LaravelDatadisClient
     {
         $store = $this->store();
 
-        if ($ttlSeconds !== null && $store instanceof CacheRepository) {
+        if ($ttlSeconds !== null) {
+            // Without the repository's store the lifetime cannot be set: the entry would live a whole window and
+            // block the query for hours after Datadis takes it.
+            if (! $store instanceof CacheRepository) {
+                throw new ConfigurationException('An earlier attempt can only be remembered on a Laravel cache repository, and datadis-client.cache.store gives '.$store::class.'.');
+            }
+
             $store = new FixedTtlRepository($store->getStore(), $ttlSeconds);
         }
 

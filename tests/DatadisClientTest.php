@@ -659,3 +659,18 @@ it('refuses an application key too short to key the guard', function () {
 
     expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'too short');
 });
+
+it('accepts every level of the logger, in any case, and none that is not one', function () {
+    foreach (Manager::REPORT_LEVELS as $level) {
+        config()->set('datadis-client.report_level', strtoupper($level));
+        expect(app(Manager::class)->reportLevel())->toBe($level);
+    }
+
+    expect(Manager::REPORT_LEVELS)->toBe(['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug']);
+});
+
+it('has no report level to set when it is null or empty', function (mixed $level) {
+    config()->set('datadis-client.report_level', $level);
+
+    expect(app(Manager::class)->reportLevel())->toBeNull();
+})->with([null, '']);
