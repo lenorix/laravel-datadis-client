@@ -2,7 +2,7 @@
 
 All notable changes to `laravel-datadis-client` will be documented in this file.
 
-## Unreleased
+## 0.1.0 - 2026-10-02
 
 First release. Laravel integration of [`lenorix/datadis-client`](https://github.com/lenorix/datadis-php-client) ^0.3.0, for PHP 8.4 and Laravel 13.
 
