@@ -66,3 +66,27 @@ it('has PHP examples that parse', function (string $path) {
         expect($parses('<?php '.$example) || $parses("<?php {$imports}\nclass Example {{$method}}"))->toBeTrue("An example does not parse in {$path}:\n{$example}");
     }
 })->with(array_merge($skills, [__DIR__.'/../resources/boost/guidelines/core.blade.php']));
+
+it('has README examples that parse', function () {
+    preg_match_all('/```php\n(.*?)```/s', file_get_contents(__DIR__.'/../README.md'), $blocks);
+
+    expect($blocks[1])->not->toBeEmpty();
+
+    foreach ($blocks[1] as $example) {
+        $parses = static function (string $code): bool {
+            try {
+                token_get_all($code, TOKEN_PARSE);
+
+                return true;
+            } catch (ParseError) {
+                return false;
+            }
+        };
+
+        // An example may be a method, or the entries of a config array.
+        $imports = implode("\n", preg_grep('/^use /', explode("\n", $example)));
+        $body = implode("\n", preg_grep('/^use /', explode("\n", $example), PREG_GREP_INVERT));
+
+        expect($parses('<?php '.$example) || $parses("<?php {$imports}\nclass Example {{$body}}") || $parses("<?php [{$body}];"))->toBeTrue("A README example does not parse:\n{$example}");
+    }
+});

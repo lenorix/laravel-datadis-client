@@ -33,8 +33,10 @@ Datadis is a third-party service, so its credentials go in `config/services.php`
 ```dotenv
 DATADIS_USERNAME=A00000000
 DATADIS_PASSWORD=your-password
-DATADIS_LEDGER_KEY=any-secret-of-at-least-16-characters
+DATADIS_LEDGER_KEY=
 ```
+
+Fill `DATADIS_LEDGER_KEY` with a random secret, for example the output of `php -r "echo bin2hex(random_bytes(32));"`. It keys the 24 hour guard.
 
 Check it works:
 
@@ -114,8 +116,18 @@ $holder->getSupplies();
 ### Give or take away access to your supplies
 
 ```php
+use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\DatadisClient\Values\Nif;
+
+$nif = Nif::fromString('12345678Z');
+
 Datadis::newAuthorization($nif);                                       // all your supplies
-Datadis::newAuthorization($nif, $from, $to, Cups::fromString($cups));  // some, for a period
+Datadis::newAuthorization(                                             // or some, for a period
+    $nif,
+    new DateTimeImmutable('2026-01-01'),
+    new DateTimeImmutable('2026-12-31'),
+    Cups::fromString('ES0000000000000000AA0A'),
+);
 Datadis::cancelAuthorization($nif);
 Datadis::listAuthorization();
 ```
@@ -127,7 +139,11 @@ These change data on Datadis and are never retried. Datadis documents them for A
 Aggregated consumption by region, tariff and sector:
 
 ```php
+use Lenorix\DatadisClient\PublicApi\Community;
+use Lenorix\DatadisClient\PublicApi\PublicSearchQuery;
 use Lenorix\DatadisClient\PublicApiClient;
+
+$query = new PublicSearchQuery(new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2026-01-31'), [Community::Madrid]);
 
 app(PublicApiClient::class)->apiSearch($query);   // or Datadis::publicApi()
 ```
@@ -177,8 +193,8 @@ In the test environment (`APP_ENV=testing`) the calls go through Laravel's `Http
 ```php
 Http::preventStrayRequests();   // a URL that stops matching must fail, not reach Datadis
 Http::fake([
-    '*/nikola-auth/tokens/login' => Http::response($token, 200, ['Content-Type' => 'text/plain']),
-    '*/api-private/api/get-supplies*' => Http::response(['supplies' => [...], 'distributorError' => []]),
+    '*/nikola-auth/tokens/login' => Http::response($jwt, 200, ['Content-Type' => 'text/plain']),
+    '*/api-private/api/get-supplies*' => Http::response(['supplies' => [/* rows */], 'distributorError' => []]),
 ]);
 ```
 
