@@ -17,7 +17,6 @@ use Lenorix\DatadisClient\DatadisConfig;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
-use Lenorix\DatadisClient\Http\Endpoint;
 use Lenorix\DatadisClient\Http\GuzzleClientFactory;
 use Lenorix\DatadisClient\Http\RetryingClient;
 use Lenorix\DatadisClient\PublicApiClient;
@@ -77,43 +76,121 @@ class LaravelDatadisClient
     }
 
     /**
-     * Records that a guarded query was sent before this package kept the record, so that the 24 hour guard
+     * The client of the public open data (aggregated consumption by region, tariff, sector...) for an
+     * account. Datadis still asks for an account's token. It shares the login with the private client.
+     *
+     * @throws InvalidArgumentException when the account is not configured
+     * @throws ConfigurationException when its settings are wrong
+     */
+    public function publicApi(?string $name = null): PublicApiClient
+    {
+        $this->reportLevel();
+        $settings = $this->settings($name ??= $this->defaultAccount())
+            ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
+
+        return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http($settings), tokenCache: $this->store());
+    }
+
+    /**
+     * Records that a consumption query was sent before this package kept the record, so that the 24 hour guard
      * knows it: for the moment you switch from a record of your own (a table, say) to this package's.
      *
-     * Give the query as it was sent and, in `$at`, when. It is remembered for what is left of the window,
-     * so a query sent 23 hours ago blocks a repeat for one more hour and ten minutes. An attempt older than
-     * the window, or one the guard already knows, is not recorded. Do it once, before any worker sends a
-     * guarded query with the new client.
-     *
-     * For maximum power and reactive energy leave out `$pointType`, `$measurementType` and `$authorizedNif`:
-     * Datadis keys those queries on the CUPS, the distributor code and the months only.
+     * Give the query as it was sent (the point type, the measurement type and the holder, if you used one) and,
+     * in `$at`, when. It is remembered for what is left of the window, so a query sent 23 hours ago blocks a
+     * repeat for one more hour and ten minutes. An attempt older than the window, or one the guard already knows,
+     * is not recorded. Do it once, before any worker sends a guarded query with the new client.
      *
      * @return bool whether it was recorded
      *
-     * @throws InvalidArgumentException when the endpoint is not guarded, a value is not valid, `$at` is in the
-     *                                  future or the account is not configured
+     * @throws InvalidArgumentException when a value is not valid, `$at` is in the future or the account is not configured
      */
-    public function rememberAttempt(
-        Endpoint $endpoint,
+    public function rememberConsumption(
         Cups $cups,
         string $distributorCode,
+        int $pointType,
         Month $startDate,
         ?Month $endDate = null,
-        ?int $pointType = null,
         MeasurementType $measurementType = MeasurementType::Hourly,
         ?Nif $authorizedNif = null,
         ?DateTimeInterface $at = null,
         ?string $account = null,
     ): bool {
-        if (! $endpoint->isGuarded()) {
-            throw new InvalidArgumentException('Only consumption, maximum power and reactive energy queries are subject to the 24 hour rule.');
+        if (! Supply::isValidPointType($pointType)) {
+            throw new InvalidArgumentException('The point type must be a whole number from 1 to 5.');
         }
 
+        $username = $this->username($account);
+
+        return $this->remember($username, $at, $this->monthQuery($cups, $distributorCode, $startDate, $endDate) + [
+            'measurementType' => $measurementType->value,
+            'pointType' => $pointType,
+            // As the client sends it: the account's own NIF is omitted.
+            'authorizedNif' => $authorizedNif === null || $authorizedNif->value() === $username ? null : $authorizedNif->value(),
+        ]);
+    }
+
+    /**
+     * Records that a maximum power query was sent before this package kept the record. Datadis keys that query
+     * on the CUPS, the distributor code and the months only. See rememberConsumption().
+     *
+     * @return bool whether it was recorded
+     *
+     * @throws InvalidArgumentException when a value is not valid, `$at` is in the future or the account is not configured
+     */
+    public function rememberMaxPower(
+        Cups $cups,
+        string $distributorCode,
+        Month $startDate,
+        ?Month $endDate = null,
+        ?DateTimeInterface $at = null,
+        ?string $account = null,
+    ): bool {
+        return $this->remember($this->username($account), $at, $this->monthQuery($cups, $distributorCode, $startDate, $endDate));
+    }
+
+    /**
+     * Records that a reactive energy query was sent before this package kept the record: the same query as the
+     * maximum power one. See rememberConsumption().
+     *
+     * @return bool whether it was recorded
+     *
+     * @throws InvalidArgumentException when a value is not valid, `$at` is in the future or the account is not configured
+     */
+    public function rememberReactive(
+        Cups $cups,
+        string $distributorCode,
+        Month $startDate,
+        ?Month $endDate = null,
+        ?DateTimeInterface $at = null,
+        ?string $account = null,
+    ): bool {
+        return $this->rememberMaxPower($cups, $distributorCode, $startDate, $endDate, $at, $account);
+    }
+
+    /**
+     * @return array<string, string>
+     *
+     * @throws InvalidArgumentException when the distributor code is not valid
+     */
+    private function monthQuery(Cups $cups, string $distributorCode, Month $startDate, ?Month $endDate): array
+    {
         if (! Supply::isValidDistributorCode($distributorCode)) {
             throw new InvalidArgumentException('The distributor code must be 1 to 10 letters, digits, dashes or underscores.');
         }
 
-        $username = $this->username($account);
+        return [
+            'cups' => $cups->value(),
+            'distributorCode' => $distributorCode,
+            'startDate' => $startDate->format(),
+            'endDate' => ($endDate ?? $startDate)->format(),
+        ];
+    }
+
+    /**
+     * @param  array<string, string|int|null>  $query  the query as the client sends it
+     */
+    private function remember(string $username, ?DateTimeInterface $at, array $query): bool
+    {
         $sentAt = DateTimeImmutable::createFromInterface($at ?? new DateTimeImmutable);
         $age = time() - $sentAt->getTimestamp();
 
@@ -123,26 +200,6 @@ class LaravelDatadisClient
 
         if ($age >= RequestLedger::WINDOW_SECONDS) {
             return false;   // out of the window: nothing to protect
-        }
-
-        $query = [
-            'cups' => $cups->value(),
-            'distributorCode' => $distributorCode,
-            'startDate' => $startDate->format(),
-            'endDate' => ($endDate ?? $startDate)->format(),
-        ];
-
-        if ($endpoint === Endpoint::Consumption) {
-            if ($pointType === null || ! Supply::isValidPointType($pointType)) {
-                throw new InvalidArgumentException('A consumption query needs its point type, a whole number from 1 to 5.');
-            }
-
-            // As the client sends it: the account's own NIF is omitted.
-            $query += [
-                'measurementType' => $measurementType->value,
-                'pointType' => $pointType,
-                'authorizedNif' => $authorizedNif === null || $authorizedNif->value() === $username ? null : $authorizedNif->value(),
-            ];
         }
 
         // claim(), not record(): it never overwrites a newer attempt that the guard already holds. The entry
@@ -157,22 +214,6 @@ class LaravelDatadisClient
                 return $this->at;
             }
         }, max(1, RequestLedger::WINDOW_SECONDS - max(0, $age)))->claim($username, $query) === null;
-    }
-
-    /**
-     * The client of the public open data (aggregated consumption by region, tariff, sector...) for an
-     * account. Datadis still asks for an account's token. It shares the login with the private client.
-     *
-     * @throws InvalidArgumentException when the account is not configured
-     * @throws ConfigurationException when its settings are wrong
-     */
-    public function publicApi(?string $name = null): PublicApiClient
-    {
-        $this->reportLevel();
-        $settings = $this->settings($name ??= $this->defaultAccount())
-            ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
-
-        return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http($settings), tokenCache: $this->store());
     }
 
     /**

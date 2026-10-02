@@ -17,7 +17,7 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 - The package records each attempt in the shared cache store (`datadis-client.cache.store`), so a second worker, job or deploy gets `RepetitionWindowException` before anything is sent. Keep that store persistent and shared, and never flush it.
 - Changing `datadis-client.ledger.key` (or `APP_KEY` when no key is set) forgets every recorded query.
 - The guard keeps a query for 24 hours and 10 minutes: asking the same one at the same time the next day is refused. Schedule a repeat of the same query every second day.
-- Switching from a record of your own (a table, say)? The guard does not know it: before any worker sends a guarded query with the new client, either wait 24 hours and 10 minutes, or seed the guard once with `LaravelDatadisClient::rememberAttempt(Endpoint::Consumption, $cups, $distributorCode, $from, $to, pointType: $pointType, at: $sentAt)` for every query sent in the last 25 hours, rejected and timed-out ones included. For maximum power and reactive energy give only the CUPS, the code and the months. If the old record may be incomplete, wait.
+- Switching from a record of your own (a table, say)? The guard does not know it: before any worker sends a guarded query with the new client, either wait 24 hours and 10 minutes, or seed the guard once with `LaravelDatadisClient::rememberConsumption($cups, $distributorCode, $pointType, $from, $to, at: $sentAt)` for every query sent in the last 25 hours, rejected and timed-out ones included (`rememberMaxPower()` and `rememberReactive()` take only the CUPS, the code and the months). If the old record may be incomplete, wait.
 - Never wrap a data query in a retry: not `$tries`, not `retry()`, not `RetryingClient`. Let the next scheduled run try again tomorrow.
 - Store the whole result, `raw` included: you cannot ask again for 24 hours.
 
@@ -50,7 +50,10 @@ class PlanSupplySync implements ShouldQueue
 
     public int $timeout = 900;           // a login and a supplies list, each up to 3 attempts of 120 s: see "Timeouts and queues"
 
-    public function __construct(public string $cups, public int $months = 2) {}
+    public function __construct(public string $cups, public int $months = 2)
+    {
+        $this->onConnection('datadis');   // a connection with its own retry_after: see "Timeouts and queues"
+    }
 
     public function handle(DatadisClient $client): void // resolve here: the client is not serialisable
     {
@@ -63,8 +66,9 @@ class PlanSupplySync implements ShouldQueue
         $current = Month::current($now);
 
         // One month each, one queued job per range: the last $months months (24 at most).
-        // If a dispatch fails halfway and the job is retried, the ranges already queued are not queued again:
-        // the range jobs are unique per supply and range.
+        // If a dispatch fails halfway and the job is retried, the ranges still queued or running are not queued
+        // again: the range jobs are unique per supply and range. A range that already ran and finished is not
+        // blocked by that, but the guard refuses its repeat.
         foreach (MonthPlanner::ranges($current->addMonths(-($this->months - 1)), $current, $now, supply: $supply) as [$from, $to]) {
             SyncSupplyRange::dispatch($supply->cups, $supply->distributorCode, $supply->pointType, $from->format(), $to->format());
         }
@@ -77,7 +81,7 @@ class SyncSupplyRange implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 1;      // a data query must not be repeated by the queue
 
-    public int $uniqueFor = 3600; // the same range is not queued twice within an hour
+    public int $uniqueFor = 3600; // while queued or running (an hour at most), the same range is not queued again
 
     public int $timeout = 600;  // a login (up to 3 attempts of 120 s) and the query (120 s): see "Timeouts and queues"
 
@@ -87,7 +91,9 @@ class SyncSupplyRange implements ShouldQueue, ShouldBeUnique
         public int $pointType,
         public string $from,
         public string $to,
-    ) {}
+    ) {
+        $this->onConnection('datadis');
+    }
 
     public function uniqueId(): string
     {
@@ -141,7 +147,7 @@ Datadis is slow: a call can take tens of seconds, and each one is allowed up to 
 - **The range job**: a login when the token is not cached, 420 seconds at worst, plus the query, 120: 540 seconds, so `$timeout = 600`. With the token cached it takes the query alone.
 - **The planning job**: the login and the supplies list, 2 x 420 = 840 seconds at worst, so `$timeout = 900`.
 - Set the job's `$timeout` (it takes precedence over the worker's `--timeout`, which is 60 seconds by default). It needs the `pcntl` PHP extension.
-- Keep the connection's `retry_after` (90 seconds by default, in `config/queue.php`) greater than the longest job timeout: Laravel says a job's timeout "should always be less than its retry after value", or the job may be attempted again before it finishes, and the query is sent twice. Here that is 930 seconds or more, so give the Datadis jobs a connection of their own with that `retry_after` instead of raising it for every queue (`$this->onConnection('datadis')` in their constructors).
+- Keep the connection's `retry_after` (90 seconds by default, in `config/queue.php`) greater than the longest job timeout: Laravel says a job's timeout "should always be less than its retry after value", or the job may be attempted again before it finishes. For the planning job that is two runs at once; for a range job, which has `$tries = 1`, the queue fails it as attempted too many times while it still runs, and the guard would refuse a second send anyway. Here the `retry_after` is 930 seconds or more, so give the Datadis jobs a connection of their own with that `retry_after` instead of raising it for every queue (the two jobs above call `onConnection('datadis')`; define the `datadis` connection in `config/queue.php` with `'retry_after' => 930`).
 - Keep the worker's `--timeout` several seconds shorter than `retry_after`.
 - The job timeout does not interrupt a blocking HTTP call: the package already gives Guzzle its own timeouts. Lower `datadis-client.accounts.*.timeout` if you want smaller job timeouts.
 

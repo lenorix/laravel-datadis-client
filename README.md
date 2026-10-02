@@ -164,7 +164,7 @@ All of them take `--account=second`. The ones that read (`supplies`, `contract`,
 The exit code tells a script what happened:
 
 - **0**: it worked, including an empty answer (nothing published yet) and a distributor error beside real data, which only prints a warning.
-- **1**: a wrong input, a Datadis error, or a distributor that failed so that no data came back.
+- **1**: a wrong input, a Datadis error (a refused repeat of a guarded query, `RepetitionWindowException`, included: the query was not sent), or a distributor that failed so that no data came back.
 
 ## What to know before production
 
@@ -187,26 +187,25 @@ Before any worker sends a guarded query with the new client, do one of these:
 - **Or tell the guard about the recent queries**, once, with the time each was sent:
 
 ```php
-use Lenorix\DatadisClient\Http\Endpoint;
 use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 
 foreach (SentQuery::where('sent_at', '>', now()->subHours(25))->get() as $sent) {
-    Datadis::rememberAttempt(
-        Endpoint::Consumption,
+    Datadis::rememberConsumption(
         Cups::fromString($sent->cups),
         $sent->distributor_code,
-        Month::fromString($sent->start_month),
+        $sent->point_type,
+        Month::fromString($sent->start_month),   // YYYY/MM, as Datadis takes it; Month::of($year, $month) otherwise
         Month::fromString($sent->end_month),
-        pointType: $sent->point_type,
         at: $sent->sent_at,
     );
 }
 ```
 
-- It returns `true` when it recorded the attempt, and `false` when the attempt is older than the window or the guard already knows it. It never replaces a newer attempt.
-- For consumption give the point type, and the measurement type and holder when you used them. For maximum power (`Endpoint::MaxPower`) and reactive energy (`Endpoint::Reactive`) give only the CUPS, the distributor code and the months.
+- **`rememberConsumption()`**, **`rememberMaxPower()`** and **`rememberReactive()`** match the three queries the guard covers. Consumption takes the point type, and the measurement type and the holder (`authorizedNif:`) if you used them. Maximum power and reactive energy take only the CUPS, the distributor code and the months, which is all Datadis keys them on.
+- They return `true` when they recorded the attempt, and `false` when the attempt is older than the window or the guard already knows it. They never replace a newer attempt.
+- The attempt is remembered for what is left of its window: one sent 23 hours ago blocks a repeat for one more hour and ten minutes.
 - Include the queries Datadis rejected and the ones that timed out: it counts them too.
 - If you cannot be sure the old record is complete (a crashed worker, a query sent from another tool), wait the whole window.
 - Keep the old record until the window has passed, and do not send guarded queries from both systems at once.
@@ -238,6 +237,7 @@ Http::fake([
 ```
 
 - Do not set `DATADIS_HTTP_STACK=guzzle` in a `.env` your tests load: the package refuses to build the client, because a test would reach the real Datadis.
+- Harmless reads are retried with real waits (1 and 2 seconds by default). In tests that fail a call, set `config()->set('datadis-client.http.retries', ['max' => 0])`, or the delays to 1 ms (`'base_delay_ms' => 1, 'max_delay_ms' => 1`), so they do not sleep.
 - To fake Datadis outside `testing`, set `DATADIS_HTTP_STACK=laravel`, or give a Guzzle mock handler with `config()->set('datadis-client.http.options.handler', $handlerStack)`.
 
 ## Configuration
@@ -247,8 +247,8 @@ All keys are in `config/datadis-client.php`.
 | Key | What it does | Default |
 |---|---|---|
 | `default` | Account used by the container, the facade and the commands (`DATADIS_ACCOUNT`). | `default` |
-| `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`, `check_username_control`. The account named `default` takes its credentials from `services.datadis`. | `v2`, `Europe/Madrid`, 120 s |
-| `cache.store` | Cache store for the token and the 24 hour guard (`DATADIS_CACHE_STORE`). Anything that is not a store name fails. | default store |
+| `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`, `DATADIS_API_VERSION`), `timezone` (`DATADIS_TIMEZONE`), `timeout` (`DATADIS_TIMEOUT`), `connect_timeout` (`DATADIS_CONNECT_TIMEOUT`), `base_url`, `user_agent`, `check_username_control`. The account named `default` takes its credentials from `services.datadis`. | `v2`, `Europe/Madrid`, 120 s, 10 s |
+| `cache.store` | Cache store for the token and the 24 hour guard (`DATADIS_CACHE_STORE`). A value that is not a text fails, and so does a name that is not a defined store. | default store |
 | `ledger.key` | Secret of at least 16 bytes for the guard (`DATADIS_LEDGER_KEY`). | from `APP_KEY` |
 | `http.stack` | `guzzle` or `laravel` (`DATADIS_HTTP_STACK`). `laravel` lets Laravel's events and recorders see the password and the token. | `guzzle`; `laravel` in tests |
 | `http.retries` | `max` (0 to 10, `DATADIS_HTTP_RETRIES`), `base_delay_ms`, `max_delay_ms`. | 2, 1000, 30000 |

@@ -66,7 +66,7 @@ function fakeDatadis(): void
 }
 ```
 
-- **The login** answers a JWT as text (`fakeJwt()` above). Any `header.payload.signature` with a numeric `exp` claim in the future works; it is not verified. A token whose `exp` is in the past is not reused.
+- **The login** answers a JWT as text (`fakeJwt()` above). Any `header.payload.signature` with a numeric `exp` claim a few minutes ahead works; the signature is not verified. A token that has expired, or is about to (within about two minutes), is not reused: the client logs in again.
 - **The paths** end in `-v2` for API v2 (`get-supplies-v2`); the wildcard after the endpoint name covers it and the query string.
 - **Answer keys**: `supplies`, `contract`, `timeCurve`, `maxPower`, `reactiveEnergy`, `authorizations`, `groups`, `users`, always beside `distributorError`. The writes answer plain text.
 - **Make the supply queryable**: a CUPS as `ES` plus 16 digits plus 2 letters, a `distributorCode` and a `pointType`.
@@ -74,7 +74,7 @@ function fakeDatadis(): void
 ## What to test
 
 - **The 24 hour guard**: resolve the client twice (`app(DatadisClient::class)`), ask the same consumption twice, expect `RepetitionWindowException` the second time and only one consumption request: `Http::recorded(...)`.
-- **Failures**: `Http::response('', 404)` gives `NoDataException`, a `503` gives `ServiceUnavailableException`; assert `requestSent`. Harmless reads are retried: use `Http::sequence()->push('', 503)->push($ok)`. Data queries and writes are not.
+- **Failures**: `Http::response('', 404)` gives `NoDataException`, a `503` gives `ServiceUnavailableException`; assert `requestSent`. Harmless reads are retried: use `Http::sequence()->push('', 503)->push($ok)`. The retries wait for real (1 and 2 seconds by default), so in tests set `config()->set('datadis-client.http.retries', ['max' => 2, 'base_delay_ms' => 1, 'max_delay_ms' => 1])`, or `['max' => 0]` where a failed call must fail at once. Data queries and writes are never retried.
 - **Holders**: after `forHolder($nif)` the URL carries `authorizedNif=<NIF>`; it is omitted for the account's own NIF.
 - **Another account**: set `datadis-client.accounts.other`, then `LaravelDatadisClient::account('other')`.
 - **Commands**: `Artisan::call('datadis:supplies')` and read `Artisan::output()`. A malformed input exits with code 1 and records no request.

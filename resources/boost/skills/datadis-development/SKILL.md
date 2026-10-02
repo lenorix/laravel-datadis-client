@@ -31,7 +31,7 @@ if ($supply === null || ! $supply->isQueryable()) {
 
 $contract = $client->getContractDetailOf($supply)->records[0] ?? null;
 $hourly   = $client->getConsumptionDataOf($supply, Month::of(2026, 7));
-$quarters = $client->getConsumptionDataOf($supply, $from, $to, MeasurementType::QuarterHourly);
+$quarters = $client->getConsumptionDataOf($supply, $from, $to, MeasurementType::QuarterHourly);   // $from, $to: Month values
 $peaks    = $client->getMaxPowerOf($supply, $from, $to);              // one row per tariff period, kW
 $reactive = $client->getReactiveDataOf($supply, $from, $to);          // API v2 only
 $client->getSupplies(); $client->getDistributorsWithSupplies(); $client->getGroups();   // getGroups: API v2 only
@@ -87,7 +87,7 @@ Every failure is a `Lenorix\DatadisClient\Exceptions\DatadisException` with `req
 
 ## Do not
 
-- Do not call the same consumption, maximum power or reactive query twice in a day, from a retry or from a test.
+- Do not call the same consumption, maximum power or reactive query twice within 24 hours and 10 minutes, from a retry or from a test.
 - Do not log, dump or record credentials, tokens or Datadis requests.
 - Do not assume a supply belongs to the account: handle `findSupply()` returning `null`.
 - Do not add floats, and do not key readings by date and time.
