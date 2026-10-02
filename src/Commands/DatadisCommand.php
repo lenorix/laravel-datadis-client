@@ -47,15 +47,23 @@ abstract class DatadisCommand extends Command
      *
      * @throws InvalidArgumentException when the account has no such supply, or its codes are unusable
      */
-    protected function supply(DatadisClient $client, mixed $cups): Supply
+    protected function supply(DatadisClient $client, Cups $cups): Supply
     {
-        $supply = $client->findSupply(Cups::fromString(is_string($cups) ? $cups : ''));
+        $supply = $client->findSupply($cups);
 
         if ($supply === null || ! $supply->isQueryable()) {
             throw new InvalidArgumentException('This account cannot see that supply, or Datadis gave no usable codes for it.');
         }
 
         return $supply;
+    }
+
+    /**
+     * @throws InvalidArgumentException when it is not a CUPS
+     */
+    protected function cups(mixed $value): Cups
+    {
+        return Cups::fromString(is_string($value) ? $value : '');
     }
 
     /**
@@ -99,6 +107,6 @@ abstract class DatadisCommand extends Command
      */
     protected function cupsList(mixed $values): array
     {
-        return array_map(fn (mixed $cups) => Cups::fromString(is_string($cups) ? $cups : ''), is_array($values) ? array_values($values) : []);
+        return array_map(fn (mixed $cups) => $this->cups($cups), is_array($values) ? array_values($values) : []);
     }
 }

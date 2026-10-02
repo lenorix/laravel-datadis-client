@@ -19,15 +19,20 @@ class ConsumptionCommand extends DatadisCommand
 
     protected function perform(DatadisClient $client): int
     {
+        // Everything the input can get wrong is checked before the first request: a bad month must not even log in.
+        $cups = $this->cups($this->argument('cups'));
+        $from = $this->month($this->argument('month'));
         $to = $this->option('to');
-        $supply = $this->supply($client, $this->argument('cups'));
+        $to = is_string($to) && $to !== '' ? $this->month($to) : null;
+
+        $supply = $this->supply($client, $cups);
 
         $this->warn('Datadis refuses this same query for 24 hours, and counts a refused one: do not run it twice.');
 
         $result = $client->getConsumptionDataOf(
             $supply,
-            $this->month($this->argument('month')),
-            is_string($to) && $to !== '' ? $this->month($to) : null,
+            $from,
+            $to,
             $this->option('quarter-hourly') ? MeasurementType::QuarterHourly : MeasurementType::Hourly,
         );
 

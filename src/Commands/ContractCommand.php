@@ -15,7 +15,7 @@ class ContractCommand extends DatadisCommand
 
     protected function perform(DatadisClient $client): int
     {
-        $result = $client->getContractDetailOf($this->supply($client, $this->argument('cups')));
+        $result = $client->getContractDetailOf($this->supply($client, $this->cups($this->argument('cups'))));
 
         $this->table(
             ['Distributor', 'Marketer', 'Access tariff', 'Contracted power (kW)', 'From', 'To'],

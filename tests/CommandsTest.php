@@ -121,8 +121,22 @@ it('refuses a bad month before asking for data', function (string $month) {
     [$code] = runCommand('datadis:consumption '.CUPS.' '.$month);
 
     expect($code)->toBe(1);
-    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-consumption-data')))->toHaveCount(0);
+    expect(Http::recorded())->toHaveCount(0);   // not even the login
 })->with(['not a month' => 'july', 'month 13' => '2026-13', 'a day' => '2026-07-01']);
+
+it('refuses a bad last month or a bad CUPS before sending anything', function (string $command) {
+    fakeForCommands();
+
+    [$code] = runCommand($command);
+
+    expect($code)->toBe(1);
+    expect(Http::recorded())->toHaveCount(0);
+})->with([
+    'a bad last month' => 'datadis:consumption '.CUPS.' 2026-01 --to=soon',
+    'a bad CUPS to read' => 'datadis:consumption ES123 2026-01',
+    'a bad CUPS for the contract' => 'datadis:contract ES123',
+    'a bad holder' => 'datadis:contract '.CUPS.' --holder=nope',
+]);
 
 it('fails the second time the same consumption is read, without sending it', function () {
     fakeForCommands();
@@ -173,7 +187,7 @@ it('refuses what it cannot send as an authorization', function (string $command)
     [$code] = runCommand($command);
 
     expect($code)->toBe(1);
-    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'authorization')))->toHaveCount(0);
+    expect(Http::recorded())->toHaveCount(0);
 })->with([
     'a bad NIF' => 'datadis:authorize nope',
     'a bad date' => 'datadis:authorize 12345678Z --from=01/01/2026',
