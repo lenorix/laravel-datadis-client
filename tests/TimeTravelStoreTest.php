@@ -1,35 +1,32 @@
 <?php
 
-use Illuminate\Cache\ArrayStore;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Lenorix\DatadisClient\DatadisClient;
-use Lenorix\DatadisClient\Time\Month;
+use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
+use Lenorix\LaravelDatadisClient\Tests\Support\NoLockStore;
 
-/** An array store whose lifetimes follow the system clock, as Redis follows its server's: `travelTo()` does not reach it. */
-class OwnClockStore extends ArrayStore
-{
-    protected function currentTime()
-    {
-        return time();
-    }
-}
-
-it('lets a query through after the window, as the application time moves, even on a store that keeps its own time', function () {
-    Cache::extend('ownclock', fn () => Cache::repository(new OwnClockStore));
-    config()->set('cache.stores.ownclock', ['driver' => 'ownclock']);
-    config()->set('cache.default', 'ownclock');
+/*
+ * A store with its own time (as Redis has the server's) does not follow `travelTo()`: a held key stays held. What the
+ * guard does with it decides what a test can promise about time travel.
+ */
+it('still refuses after a travelled window on a store that keeps its own time, as Redis does', function () {
+    Cache::extend('owntime', fn () => Cache::repository(new NoLockStore));
+    config()->set('cache.stores.owntime', ['driver' => 'owntime']);
+    config()->set('cache.default', 'owntime');
     fakeEverything();
-    $this->travelTo(Carbon::parse('2026-07-10 04:00', 'Europe/Madrid'));
     $client = app(DatadisClient::class);
-    $month = Month::of(2026, 5);
+    $month = monthsAgo(2);
 
     $client->getMaxPowerOf(supplyOf($client), $month);
+
+    $held = fn () => (fn () => array_keys($this->items))->call(Cache::store('owntime')->getStore());
+    expect($held())->not->toBeEmpty();   // the premise: the key is in the store
+
     $this->travelTo(now()->addHours(25));
+    expect($held())->not->toBeEmpty();   // ... and still there after the travel: the store did not move
 
-    // The held key is still in the store (its own clock has not moved), yet the ledger reads the time it holds against the
-    // application's: after the window the query is free.
-    $client->getMaxPowerOf(supplyOf($client), $month);
-
-    expect(guardedRequests())->toBe(2);
+    // The held key outlives the travelled window: the guard still refuses. Only a cache whose expiry follows `now()` (array, file,
+    // database) lets a test move the guard through the window.
+    expect(fn () => $client->getMaxPowerOf(supplyOf($client), $month))->toThrow(RepetitionWindowException::class);
+    expect(guardedRequests())->toBe(1);
 });

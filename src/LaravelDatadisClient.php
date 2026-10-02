@@ -30,8 +30,11 @@ use Lenorix\DatadisClient\Values\MeasurementType;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
 use Lenorix\LaravelDatadisClient\Support\LaravelClock;
+use LogicException;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Builds the DatadisClient of each configured account on the application's HTTP client and cache.
@@ -226,7 +229,16 @@ class LaravelDatadisClient
         $settings = $this->settings($name ?? $this->defaultAccount())
             ?? throw new InvalidArgumentException('The Datadis account ['.($name ?? $this->defaultAccount()).'] is not configured in services.datadis or datadis-client.accounts.');
 
-        return DatadisClient::fromArray($settings, ledger: $this->ledger(), clock: $this->clock);
+        // A client that cannot send: an import never reaches Datadis, whatever the HTTP settings or the test environment say.
+        $mute = new class implements ClientInterface
+        {
+            public function sendRequest(RequestInterface $request): ResponseInterface
+            {
+                throw new LogicException('An import never sends a request.');
+            }
+        };
+
+        return DatadisClient::fromArray($settings, http: $mute, ledger: $this->ledger(), clock: $this->clock);
     }
 
     private function importLockName(string $username): string

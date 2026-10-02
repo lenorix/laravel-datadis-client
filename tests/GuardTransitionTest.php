@@ -15,6 +15,7 @@ use Lenorix\DatadisClient\Values\MeasurementType;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Tests\Support\NoLockStore;
 
 it('makes the client refuse what a record of your own says was sent', function (Closure $remember, Closure $send) {
     fakeEverything();
@@ -276,84 +277,6 @@ it('takes a lock per account while it imports, so two imports cannot leave the o
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(3), at: new DateTimeImmutable('-1 hour'), account: 'other'))->toBeTrue();
     $lock->release();
 });
-
-/** A store that cannot lock: only the Store contract, kept in an array. */
-class NoLockStore implements Store
-{
-    /** @var array<string, array{mixed, int}> */
-    private array $items = [];
-
-    public function get($key)
-    {
-        return isset($this->items[$key]) && $this->items[$key][1] > time() ? $this->items[$key][0] : null;
-    }
-
-    public function many(array $keys)
-    {
-        return array_combine($keys, array_map(fn ($key) => $this->get($key), $keys));
-    }
-
-    public function put($key, $value, $seconds)
-    {
-        $this->items[$key] = [$value, time() + $seconds];
-
-        return true;
-    }
-
-    public function putMany(array $values, $seconds)
-    {
-        foreach ($values as $key => $value) {
-            $this->put($key, $value, $seconds);
-        }
-
-        return true;
-    }
-
-    public function increment($key, $value = 1)
-    {
-        return $this->items[$key][0] = ($this->get($key) ?? 0) + $value;
-    }
-
-    public function decrement($key, $value = 1)
-    {
-        return $this->increment($key, -$value);
-    }
-
-    public function forever($key, $value)
-    {
-        return $this->put($key, $value, 315360000);
-    }
-
-    public function touch($key, $seconds)
-    {
-        if (! isset($this->items[$key])) {
-            return false;
-        }
-
-        $this->items[$key][1] = time() + $seconds;
-
-        return true;
-    }
-
-    public function forget($key)
-    {
-        unset($this->items[$key]);
-
-        return true;
-    }
-
-    public function flush()
-    {
-        $this->items = [];
-
-        return true;
-    }
-
-    public function getPrefix()
-    {
-        return '';
-    }
-}
 
 it('imports on a store that cannot lock, which then needs one process', function () {
     Cache::extend('nolock', fn () => Cache::repository(new NoLockStore));
