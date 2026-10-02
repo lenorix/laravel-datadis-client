@@ -11,6 +11,7 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\ServiceProvider;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\DatadisException;
@@ -26,6 +27,7 @@ use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\LaravelDatadisClientServiceProvider;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
 use Psr\Log\LoggerInterface;
 
@@ -197,9 +199,13 @@ it('publishes the config under the package tag and ships sensible defaults', fun
     expect(config('datadis-client.accounts.default.timeout'))->toBe(120);
     expect(config('datadis-client'))->toHaveKeys(['cache', 'ledger']);
 
-    $this->artisan('vendor:publish', ['--tag' => 'datadis-client-config', '--force' => true])->assertSuccessful();
-    expect(config_path('datadis-client.php'))->toBeFile();
-    unlink(config_path('datadis-client.php'));
+    // Nothing is copied: a published file in Testbench's shared skeleton would race with parallel tests.
+    $published = ServiceProvider::pathsToPublish(LaravelDatadisClientServiceProvider::class, 'datadis-client-config');
+
+    expect(array_keys($published))->toHaveCount(1);
+    expect(array_key_first($published))->toBeFile();
+    expect(basename((string) array_key_first($published)))->toBe('datadis-client.php');
+    expect(basename((string) reset($published)))->toBe('datadis-client.php');
 });
 
 it('keeps services.datadis on the account named default when another one is the default', function () {
