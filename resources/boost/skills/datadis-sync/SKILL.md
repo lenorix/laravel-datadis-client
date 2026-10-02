@@ -11,7 +11,7 @@ Use it for anything that fetches Datadis data on a schedule or in bulk: a nightl
 
 ## The 24 hour rule
 
-Datadis refuses an identical consumption, maximum power or reactive query for 24 hours and counts every call it receives, including rejected ones and timeouts.
+Datadis refuses an identical consumption or maximum power query for 24 hours, and the manual says a call that failed because of the caller's own mistake cannot be repeated either, so a rejected call counts. A call that timed out may have counted too. The client applies the same rule to the reactive energy query, to be safe.
 
 - A query is "used for today" once it may have reached Datadis. Only `requestSent === false` on a `DatadisException` means it is still available.
 - The package records each attempt in the shared cache store (`datadis-client.cache.store`), so a second worker, job or deploy gets `RepetitionWindowException` before anything is sent. Keep that store persistent and shared, and never flush it.
@@ -108,7 +108,10 @@ Every second day, not every day: the guard keeps a query for 24 hours and 10 min
 
 - Datadis is slow: a query can take tens of seconds, and each call is allowed up to `datadis-client.accounts.*.timeout` (default 120 s).
 - A job's timeout must cover what it does in sequence: the login, the supplies list and each query. Twenty-four months in one job could need almost an hour, so make one job per range.
-- Keep the queue's `retry_after` above the job timeout, and the worker's `--timeout` at or above it. Laravel's default `retry_after` is 90 seconds, so for `$timeout = 300` set `retry_after` to 330 or more in `config/queue.php`, and run `php artisan queue:work --timeout=300`. Otherwise the job is released while it still runs, and the query is sent twice.
+- Set the job's `$timeout` (it takes precedence over the worker's `--timeout`, which is 60 seconds by default). It needs the `pcntl` PHP extension.
+- Keep the connection's `retry_after` (90 seconds by default, in `config/queue.php`) greater than the job's timeout: Laravel says a job's timeout "should always be less than its retry after value", or the job may be attempted again before it finishes, and the query is sent twice. For `$timeout = 300`, set `retry_after` to 330 or more.
+- Keep the worker's `--timeout` several seconds shorter than `retry_after`.
+- The job timeout does not interrupt a blocking HTTP call. The package already gives Guzzle its own timeouts (`datadis-client.accounts.*.timeout`, 120 seconds by default).
 
 ### Retries
 
@@ -131,5 +134,5 @@ Every second day, not every day: the guard keeps a query for 24 hours and 10 min
 ## Sources
 
 - The 24 hour rule: the Datadis API manual, sections 4.3 and 4.4 ("a control in the system does not allow repeating calls made in the last 24 hours"), in the API section of [datadis.es](https://datadis.es/private-api) (it asks for a Datadis login). The refusals the real service gives are in the client's [quirks and rules](https://github.com/lenorix/datadis-php-client/blob/main/docs/quirks-and-rules.md).
-- Job timeouts and `retry_after`: Laravel, [Job Expiration](https://laravel.com/docs/13.x/queues#job-expiration), [Max Job Attempts and Timeout](https://laravel.com/docs/13.x/queues#max-job-attempts-and-timeout) and [Worker Timeouts](https://laravel.com/docs/13.x/queues#worker-timeouts).
+- Job timeouts and `retry_after`: Laravel, [Job Expiration](https://laravel.com/docs/13.x/queues#job-expiration), [Timeout](https://laravel.com/docs/13.x/queues#timeout) and [Worker Timeouts](https://laravel.com/docs/13.x/queues#worker-timeouts).
 - The 24 hour guard and the retries of this package: its README, and the client's [design decisions](https://github.com/lenorix/datadis-php-client/blob/main/docs/design-decisions.md).

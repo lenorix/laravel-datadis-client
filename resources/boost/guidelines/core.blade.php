@@ -4,7 +4,7 @@ Reads electricity data from Datadis, where Spanish distributors publish supply d
 
 ### Rules that must not be broken
 
-- **The 24 hour rule.** Datadis refuses an identical consumption, maximum power or reactive query for 24 hours and counts the refused ones. Never loop over such a query and never add a retry of your own around it; a repeat throws `RepetitionWindowException` before anything is sent.
+- **The 24 hour rule.** Datadis refuses an identical consumption or maximum power query for 24 hours and counts the refused ones (its manual documents the rule for those two; the client applies it to reactive energy too, to be safe). Never loop over such a query and never add a retry of your own around it; a repeat throws `RepetitionWindowException` before anything is sent.
 - **Never expose credentials.** The Datadis password and the token must not reach logs, events or request recorders. Keep `datadis-client.http.stack` unset (plain Guzzle) outside tests, and do not read the token cache key or dispatch cache events for it.
 - **Never put the client in a queued job property.** It holds a password and cannot be serialised: type-hint it in `handle()`.
 - **Writes change data on Datadis.** `newAuthorization()`, `cancelAuthorization()` and `partnerDeleteUser()` are never retried and return Datadis's answer text, so check it. Run them only when the task asks for it.
@@ -56,6 +56,7 @@ When you explain a rule, a tariff or a field to the user, cite where it comes fr
 
 - Datadis API manual: the API section of [datadis.es](https://datadis.es/private-api) (it asks for a Datadis login).
 - Tariffs, periods, holidays and reactive energy: [Circular CNMC 3/2020](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066).
+- National holidays for the periods: [Real Decreto 2001/1983](https://www.boe.es/buscar/act.php?id=BOE-A-1983-20906), art. 45.1.
 - Measurement point types: [Real Decreto 1110/2007](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478#a7), art. 7.
 - The CUPS: [CNMC, "El CUPS"](https://www.cnmc.es/sites/default/files/editor_contenidos/Energia/Consumidores/3.1.%20El%20CUPS.pdf).
 - How the real service behaves, with evidence: the [client's documentation](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md).

@@ -165,7 +165,7 @@ All of them take `--account=second` and `--holder=12345678Z`. A malformed NIF, C
 
 ### The 24 hour rule
 
-Datadis refuses an identical consumption, maximum power or reactive query for 24 hours, and counts the refused ones too. The package stops a repeat before sending it and throws `RepetitionWindowException`, which is reported as a warning.
+Datadis refuses an identical consumption or maximum power query for 24 hours, and counts the refused ones too. The package applies the same rule to reactive energy, to be safe. The package stops a repeat before sending it and throws `RepetitionWindowException`, which is reported as a warning.
 
 - **Use a shared cache store** for `DATADIS_CACHE_STORE`: Redis, Memcached or your database. `file` only coordinates processes on one server, and `array` protects nothing.
 - **Set `DATADIS_LEDGER_KEY`.** Without it the secret is derived from `APP_KEY`, and rotating the key makes the guard forget the last 24 hours.

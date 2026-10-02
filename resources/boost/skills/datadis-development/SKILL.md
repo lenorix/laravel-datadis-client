@@ -38,7 +38,7 @@ $client->getSupplies(); $client->getDistributorsWithSupplies(); $client->getGrou
 $client->listAuthorization();                                         // read only
 ```
 
-The consumption, maximum power and reactive calls are guarded by the 24 hour rule. The others are free to repeat.
+The consumption and maximum power calls are subject to the 24 hour rule, which the Datadis manual documents (sections 4.3 and 4.4). The client applies it to the reactive call too, to be safe. The others are free to repeat.
 
 ### Writes
 
@@ -65,7 +65,7 @@ Every list call returns an `ApiResult`: `records`, `isEmpty()`, `distributorErro
 - **Numbers are decimal strings.** Add them with `Brick\Math\BigDecimal`, never with floats.
 - **Dates** are `DateTimeImmutable` in the client's time zone: `Europe/Madrid` by default, `Atlantic/Canary` for the Canary Islands (`timezone` in the account config).
 - **Hours** are labelled `01:00` to `24:00` and mark the end of the hour. The last Sunday of October has two `03:00` rows and the last Sunday of March has none. Use each reading's `start`, `end`, `index` and `hourOfDay`; never expect 24 rows or key by date and time.
-- **Extra rows.** Some distributors send an extra `00:00` row: skip it when `$reading->hasValidTime()` is false before adding energy up.
+- **Extra rows.** An extra `00:00` row has been reported from some distributors: skip it when `$reading->hasValidTime()` is false before adding energy up.
 - **Tariff periods.** `$contract->tariff()` is an `AccessTariff` (T20TD, T30TD, T61TD...) or `null`. `->schedule(Territory::fromPostalCode($supply->postalCode) ?? Territory::Peninsula)->periodFor($day, $hour)` gives the period of an hour.
 - **CUPS exactly as listed.** Datadis answers "not authorized" for a lowercase or truncated CUPS; the `...Of($supply)` methods send it right.
 

@@ -13,7 +13,7 @@ Use it when you must understand what a Datadis field means, or compute something
 
 *Source: the Datadis API manual (sections 4.3 and 4.4; see [Sources](#sources)) and the answers observed by the client ([API reference](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md)).*
 
-- **Energy** is in kWh (`consumptionKWh`, `surplusEnergyKWh`, `generationEnergyKWh`). **Power** is in kW (`contractedPowerkW` and the maximum power, although the manual says watts).
+- **Energy** is in kWh (`consumptionKWh`, `surplusEnergyKWh`, `generationEnergyKWh`). **Power** is in kW (`contractedPowerkW` and the maximum power). The manual's example of the maximum power gives no unit; the client checked kW against real answers.
 - **Reactive energy** is billed in kVArh. What Datadis returns for it (API v2 only) has not been seen with data yet, so do not assume its unit.
 - Values arrive as decimal strings and keep every digit Datadis sends. Add them with `Brick\Math\BigDecimal`, never with floats.
 - A reading is **hourly** (24 a day, in a daylight saving change 23 or 25) or **quarter-hourly** (96 a day). Each label marks the **end** of the interval, so `24:00` is the last hour.
@@ -21,9 +21,9 @@ Use it when you must understand what a Datadis field means, or compute something
 
 ## The supply: CUPS and its codes
 
-*Sources: the [CNMC guide to the CUPS](https://www.cnmc.es/sites/default/files/editor_contenidos/Energia/Consumidores/3.1.%20El%20CUPS.pdf) for its structure, [RD 1110/2007, art. 7](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478#a7) for the point types, and the Datadis API manual, section 4.1, for the codes.*
+*Sources: the [CNMC guide to the CUPS](https://www.cnmc.es/sites/default/files/editor_contenidos/Energia/Consumidores/3.1.%20El%20CUPS.pdf) for what it is and its structure, the client's [quirks and rules](https://github.com/lenorix/datadis-php-client/blob/main/docs/quirks-and-rules.md) for its optional suffix and how Datadis takes it, [RD 1110/2007, art. 7](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478#a7) for the point types, and the Datadis API manual, sections 4.1 and 4.3, for the codes.*
 
-- A **CUPS** identifies a supply point, not its holder, and is permanent. It is `ES`, the distributor's digits and 12 digits of the point (16 digits in all), 2 control letters, and sometimes a border point digit and letter more (20 or 22 characters, for example `ES0000000000000000AA0A`). Datadis wants it exactly as listed.
+- A **CUPS** identifies a supply point, not its holder, and is permanent. It is `ES`, the distributor's digits and 12 digits of the point (16 digits in all) and 2 control letters: 20 characters, for example `ES0000000000000000AA0A`. Some have a border point suffix of a digit and a letter (22 characters). Datadis wants it exactly as the supplies list gives it: a lowercase CUPS, or the 20 character form of one that has the suffix, is refused as not authorized.
 - Every data call also needs the **distributor code** (a short text: the manual says a number from 1 to 8, but treat it as opaque) and the **point type**. Both come from the supplies list.
 - The **point type** (`pointType`) is a whole number from 1 to 5. For a consumer, RD 1110/2007 (art. 7) classifies it by contracted power in any period:
 
@@ -73,7 +73,10 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 
 **3.0TD and 6.1TD to 6.4TD** share one six-period calendar that depends on the month (the season) and the territory. P6 covers 0:00 to 8:00 every day, and all day on weekends, 6 January and national holidays. On working days the other hours are P1 to P5 by season and by high or medium hours. The package ships both calendars: use them instead of writing your own.
 
-- **Holidays** are the national ones with a fixed date that regions cannot substitute, plus 6 January: 1 and 6 January, 1 May, 15 August, 12 October, 1 November, 6, 8 and 25 December. Good Friday and every regional or local holiday do not count.
+- **Holidays.** The Circular (art. 7.2.b and 7.3) counts as valle or P6 all day the Saturdays, Sundays, 6 January and the national holidays of the official calendar, leaving out the ones regions can substitute and the ones without a fixed date. The national holidays are those of [RD 2001/1983, art. 45.1](https://www.boe.es/buscar/act.php?id=BOE-A-1983-20906) (as worded by RD 1346/1989), and each year's calendar is published in the BOE ([2026](https://www.boe.es/buscar/act.php?id=BOE-A-2025-21667)):
+  - Not substitutable: 12 October and 6 December; 1 January, 1 May and 25 December; 15 August, 1 November, 8 December and Good Friday.
+  - Substitutable by the regions: Maundy Thursday, 6 January, and 19 March or 25 July.
+  - Counted: the fixed-date ones that cannot be substituted, plus 6 January, which the Circular names: **1 and 6 January, 1 May, 15 August, 12 October, 1 November, 6 and 8 December, 25 December**. Good Friday has no fixed date, and Maundy Thursday, San José, Santiago and every regional or local holiday are left out.
 - The period of a reading is `$tariff->schedule($territory)->periodFor($reading->day, $reading->hourOfDay)`, a number from 1.
 
 ## Territories and time
@@ -82,7 +85,7 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 
 - The first two digits of a postal code give the province: `07` Baleares, `35` and `38` Canarias, `51` Ceuta, `52` Melilla, `01` to `52` otherwise the Peninsula. `Territory::fromPostalCode()` returns `null` for anything else.
 - The Peninsula, Baleares, Ceuta and Melilla use CET and CEST. The Canary Islands use WET and WEST: give the client `timezone` `Atlantic/Canary` for those supplies.
-- The Canary Islands, Ceuta and Melilla have their own period hours and seasons in the six-period calendar.
+- Baleares, the Canary Islands, Ceuta and Melilla each have their own seasons and hours in the six-period calendar (Circular, art. 7.2).
 
 ## Maximum power, reactive energy and self-consumption
 
@@ -139,8 +142,9 @@ foreach ($client->getConsumptionDataOf($supply, $month)->records as $reading) {
 
 Official sources, to cite when you explain a rule or a figure to the user:
 
-- [Circular CNMC 3/2020](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066) (BOE-A-2020-1066): art. 6.2 access tariffs, art. 7.2 and 7.3 periods and holidays, art. 9.5 reactive energy.
+- [Circular CNMC 3/2020](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066) (BOE-A-2020-1066): art. 6.2 access tariffs, art. 7.2 and 7.3 periods and the holiday rule, art. 9.5 reactive energy.
 - [Real Decreto 1110/2007](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478#a7) (BOE-A-2007-16478), art. 7: classification of the measurement points.
+- [Real Decreto 2001/1983](https://www.boe.es/buscar/act.php?id=BOE-A-1983-20906) (BOE-A-1983-20906), art. 45.1: the national holidays, as worded by RD 1346/1989; and the BOE resolution that publishes each year's calendar, such as the [one of 2026](https://www.boe.es/buscar/act.php?id=BOE-A-2025-21667) (BOE-A-2025-21667).
 - [CNMC, "El CUPS"](https://www.cnmc.es/sites/default/files/editor_contenidos/Energia/Consumidores/3.1.%20El%20CUPS.pdf): what the CUPS is and its structure.
 - [Datadis](https://datadis.es) API manual, in the API section of the site ([datadis.es/private-api](https://datadis.es/private-api); it asks for a Datadis login): endpoints, parameters and answers.
 - Behaviour of the real service, with the evidence of each point: the client's [API reference](https://github.com/lenorix/datadis-php-client/blob/main/docs/api-reference.md), [quirks and rules](https://github.com/lenorix/datadis-php-client/blob/main/docs/quirks-and-rules.md) and [domain notes](https://github.com/lenorix/datadis-php-client/blob/main/docs/domain-knowledge.md).
