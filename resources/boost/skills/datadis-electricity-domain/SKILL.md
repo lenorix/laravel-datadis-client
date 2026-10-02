@@ -11,17 +11,27 @@ Use it when you must understand what a Datadis field means, or compute something
 
 ## Units and shapes
 
-- **Energy** is in kWh (`consumptionKWh`, `surplusEnergyKWh`, `generationEnergyKWh`). **Power** is in kW (`contractedPowerkW`, maximum power). **Reactive energy** is in kvarh.
+- **Energy** is in kWh (`consumptionKWh`, `surplusEnergyKWh`, `generationEnergyKWh`). **Power** is in kW (`contractedPowerkW` and the maximum power, although the manual says watts).
+- **Reactive energy** is billed in kVArh. What Datadis returns for it (API v2 only) has not been seen with data yet, so do not assume its unit.
 - Values arrive as decimal strings and keep every digit Datadis sends. Add them with `Brick\Math\BigDecimal`, never with floats.
 - A reading is **hourly** (24 a day, in a daylight saving change 23 or 25) or **quarter-hourly** (96 a day). Each label marks the **end** of the interval, so `24:00` is the last hour.
-- `obtainMethod` says where an hourly value comes from: `isReal()` is a meter reading, `isEstimated()` is an estimate. Keep that when you total, or tell the user.
+- `obtainMethod` says where a value comes from: `isReal()` is a meter reading, `isEstimated()` an estimate, and any other text is unknown. Keep that when you total, or tell the user.
 
 ## The supply: CUPS and its codes
 
 - A **CUPS** identifies a supply point: `ES`, 16 digits, 2 control letters, and sometimes a digit and a letter more (for example `ES0000000000000000AA0A`). Datadis wants it exactly as listed.
-- Every data call also needs the **distributor code** (an opaque short text such as `2`) and the **point type**. Both come from the supplies list.
-- The **point type** (`pointType`) is a whole number from 1 to 5 (RD 1110/2007). Types 1 to 3 are large consumers with quarter-hourly metering and a maximeter. Types 4 and 5 are smaller supplies; most homes are type 5.
-- Quarter-hourly data exists for types 1 and 2 (and 3 for one distributor). For the others Datadis answers with an empty list: that is not an error and not zero consumption.
+- Every data call also needs the **distributor code** (a short text: the manual says a number from 1 to 8, but treat it as opaque) and the **point type**. Both come from the supplies list.
+- The **point type** (`pointType`) is a whole number from 1 to 5 that classifies the supply by contracted power in any period (RD 1110/2007, art. 7):
+
+| Type | Contracted power |
+|---|---|
+| 1 | 10 MW or more |
+| 2 | above 450 kW |
+| 3 | above 50 kW up to 450 kW |
+| 4 | above 15 kW up to 50 kW |
+| 5 | 15 kW or less (homes and small businesses) |
+
+- Quarter-hourly data (`measurementType` 1): a type 5 supply answers an empty list, which is not an error and not zero consumption. Datadis offers it for the larger types; the labels of those answers have not been verified.
 
 ## Access tariffs
 
@@ -29,12 +39,12 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 
 | Tariff | Who | Energy periods | Power periods |
 |---|---|---|---|
-| 2.0TD | low voltage, up to 15 kW | 3 (P1 to P3) | 2 |
-| 3.0TD | low voltage, above 15 kW | 6 | 6 |
-| 6.1TD | high voltage from 1 kV up to 30 kV | 6 | 6 |
-| 6.2TD | from 30 kV up to 72.5 kV | 6 | 6 |
-| 6.3TD | from 72.5 kV up to 145 kV | 6 | 6 |
-| 6.4TD | 145 kV and above | 6 | 6 |
+| 2.0TD | up to 1 kV, 15 kW or less in every period | 3 (P1 to P3) | 2 |
+| 3.0TD | up to 1 kV, above 15 kW in at least one period | 6 | 6 |
+| 6.1TD | above 1 kV and below 30 kV | 6 | 6 |
+| 6.2TD | 30 kV or more and below 72.5 kV | 6 | 6 |
+| 6.3TD | 72.5 kV or more and below 145 kV | 6 | 6 |
+| 6.4TD | 145 kV or more | 6 | 6 |
 
 - `$contract->tariff()` returns an `AccessTariff` or `null` when it is unsure. Datadis sends `accessFare` as free text (`BAJA TENSION y POTENCIA <= 15 kW`), so the client reads its shape and checks it against the contracted powers. Never match the text yourself.
 - `contractedPowerkW` has one value per power period: 2 values for 2.0TD, 6 for the others. If the number disagrees with the text, the tariff is `null`.
@@ -48,12 +58,12 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 - **P1 punta**: from 10:00 to 14:00 and from 18:00 to 22:00.
 - **P2 llano**: from 8:00 to 10:00, from 14:00 to 18:00 and from 22:00 to 24:00.
 - **P3 valle**: from 0:00 to 8:00.
-- **Weekends and national holidays** are all P3. In Ceuta and Melilla the punta and llano blocks start one hour later and the valle still ends at 8:00.
+- **Valle all day** on Saturdays, Sundays, 6 January and the national holidays. In Ceuta and Melilla the punta and llano blocks start one hour later (punta 11:00 to 15:00 and 19:00 to 23:00) and the valle still ends at 8:00.
 - A reading's `hourOfDay` is the hour it starts (0 to 23), which is what `periodFor()` takes.
 
-**3.0TD and 6.1TD to 6.4TD** share one six-period calendar that depends on the month (the season) and the territory. On working days the early hours (0 to 8) are P6, and the "high" hours are the morning and evening ones. The package ships both calendars: use them instead of writing your own.
+**3.0TD and 6.1TD to 6.4TD** share one six-period calendar that depends on the month (the season) and the territory. P6 covers 0:00 to 8:00 every day, and all day on weekends, 6 January and national holidays. On working days the other hours are P1 to P5 by season and by high or medium hours. The package ships both calendars: use them instead of writing your own.
 
-- **National holidays** count as weekends: 1 and 6 January, 1 May, 15 August, 12 October, 1 November, 6, 8 and 25 December. Good Friday, regional and local holidays are not counted.
+- **Holidays** are the national ones with a fixed date that regions cannot substitute, plus 6 January: 1 and 6 January, 1 May, 15 August, 12 October, 1 November, 6, 8 and 25 December. Good Friday and every regional or local holiday do not count.
 - The period of a reading is `$tariff->schedule($territory)->periodFor($reading->day, $reading->hourOfDay)`, a number from 1.
 
 ## Territories and time
@@ -64,17 +74,17 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 
 ## Maximum power, reactive energy and self-consumption
 
-- **Maximum power** (`getMaxPowerOf()`) returns one row per tariff period, in kW, with the moment it was reached. `periodNumber()` gives the period. Its time marks the end of a quarter hour, so a peak at `00:00` belongs to the last quarter of the previous day. Compare it with the contracted power of the same period.
-- **Reactive energy** (`getReactiveDataOf()`, API v2 only) is penalised in 3.0TD and 6.xTD, in every period except P6, when it exceeds 33 % of the active energy (a power factor below 0.95). The client only gives the values: you decide what to do with them.
-- **Self-consumption**: a reading can carry `surplusEnergyKWh`, `generationEnergyKWh` and `selfConsumptionEnergyKWh` (null when the supply has none). The contract carries `selfConsumptionTypeCode`, `cau`, `installedCapacity` and `partitionCoefficient`. The client exposes them and does not interpret them; the codes come from RD 244/2019.
+- **Maximum power** (`getMaxPowerOf()`) returns one row per tariff period, in kW, with the date and time it was reached; `periodNumber()` gives the period. The time looks like the end of a quarter hour (a peak at `00:00` fits the last quarter of the previous day), which has not been verified. Compare it with the contracted power of the same period.
+- **Reactive energy** (`getReactiveDataOf()`, API v2 only). The Circular bills the excess of reactive energy to every supply except 2.0TD (low voltage, 15 kW or less): in all periods except P6, when the reactive energy of the billing period exceeds 33 % of the active, and only the excess is billed. The client only gives the values: apply the rule yourself, over the whole billing period.
+- **Self-consumption**: a reading can carry `surplusEnergyKWh`, `generationEnergyKWh` and `selfConsumptionEnergyKWh` (null when the supply has none). The contract carries `selfConsumptionTypeCode` with its description in words, `cau`, `installedCapacity` and `partitionCoefficient`. The client exposes them and does not interpret them.
 
 ## Authorization
 
-A holder (the owner of the supply) authorizes a third party's NIF inside Datadis, for a period of about two years, renewable, and not always instant. The third party asks with its own credentials and the holder's NIF as `authorizedNif`, never with the holder's password. An expired authorization shows up as `AuthorizationException`.
+A holder (the owner of the supply) authorizes a third party's NIF inside Datadis. The third party asks with its own credentials and the holder's NIF as `authorizedNif`, never with the holder's password. Each authorization has a status and a validity period (`listAuthorization()` shows them); a missing or expired one shows up as `AuthorizationException`.
 
 ## What is available, and when
 
-- Whole months within the last 24 months.
+- Whole months within the last 24 months; the boundary month, exactly two years back, is refused.
 - The current month has data up to about two days ago, and a month can keep changing for some days after it ends. A run of trailing zeros in the current month is not real consumption.
 - A distributor can fail while the others answer: read `distributorErrors`, and do not take an empty answer for "no consumption".
 
@@ -109,4 +119,6 @@ foreach ($client->getConsumptionDataOf($supply, $month)->records as $reading) {
 
 ## Sources
 
-Circular CNMC 3/2020 (access tariffs and periods), RD 1110/2007 (metering points), RD 244/2019 (self-consumption) and the public Datadis API manual.
+- Circular CNMC 3/2020, articles 6 and 7 ([BOE-A-2020-1066](https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066)): tariffs, periods, holidays and reactive energy.
+- Real Decreto 1110/2007, article 7 ([BOE-A-2007-16478](https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478)): point types.
+- The public Datadis API manual and the answers observed by `lenorix/datadis-client`: fields, units and limits of the data.
