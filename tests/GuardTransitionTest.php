@@ -89,8 +89,11 @@ it('remembers for what is left of the window, from the time the query was sent',
     // Just inside the window (24 h and 10 min): still blocks, and the time kept is the original one.
     expect($record(RequestLedger::WINDOW_SECONDS - 60))->toBeTrue();
 
-    // The attempt kept is the first one: asking again, even with a later time, does not overwrite it.
-    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable))->toBeFalse();
+    // The newest attempt wins: asking again with a later time moves the guard to it ...
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable))->toBeTrue();
+
+    // ... and an older time, or the same one again, changes nothing.
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-2 hours')))->toBeFalse();
 
     // Out of the window: nothing to protect, so nothing is recorded.
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(3), at: new DateTimeImmutable('-'.(RequestLedger::WINDOW_SECONDS + 1).' seconds')))->toBeFalse();
@@ -173,3 +176,100 @@ it('keeps an old attempt only for what is left of its window, not for a whole ne
     'sent 12 hours ago: half of it' => [12, RequestLedger::WINDOW_SECONDS - 12 * 3600],
     'sent 23 hours ago: an hour and ten minutes' => [23, RequestLedger::WINDOW_SECONDS - 23 * 3600],
 ]);
+
+/** The time the guard holds for a maximum power query of the default account, or null. */
+function heldTime(Closure $month): ?int
+{
+    $ledger = (fn () => $this->ledger())->call(app(Manager::class));
+
+    return $ledger->lastAttempt('00000000T', ['cups' => CUPS, 'distributorCode' => '2', 'startDate' => $month()->format(), 'endDate' => $month()->format(), 'authorizedNif' => null])?->getTimestamp();
+}
+
+it('keeps the newest attempt of a history, whatever the order it is imported in', function (array $hoursAgo) {
+    $newest = min($hoursAgo);
+    $month = fn () => monthsAgo(2);
+
+    foreach ($hoursAgo as $hours) {
+        Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', $month(), at: new DateTimeImmutable("-{$hours} hours"));
+    }
+
+    // The guard holds the time of the newest attempt: it is the one whose window ends last.
+    expect(abs(heldTime($month) - (time() - $newest * 3600)))->toBeLessThanOrEqual(5);
+})->with([
+    'the oldest first' => [[23, 1]],
+    'the newest first' => [[1, 23]],
+    'the same twice' => [[5, 5]],
+    'three, mixed' => [[10, 2, 20]],
+    'ten, descending' => [[23, 21, 19, 17, 15, 13, 11, 9, 7, 5]],
+]);
+
+it('lets the newest attempt of a history set how long the guard waits', function (array $hoursAgo) {
+    TtlSpyStore::$ttls = [];
+    Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
+    config()->set('cache.stores.spy', ['driver' => 'spy']);
+    config()->set('datadis-client.cache.store', 'spy');
+
+    foreach ($hoursAgo as $hours) {
+        Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable("-{$hours} hours"));
+    }
+
+    $ledgerKeys = array_filter(TtlSpyStore::$ttls, fn ($ttl, $key) => str_starts_with($key, 'datadis_query_'), ARRAY_FILTER_USE_BOTH);
+    $expected = RequestLedger::WINDOW_SECONDS - min($hoursAgo) * 3600;
+
+    // The entry now lives until the newest attempt's window ends, not the oldest one's.
+    expect($ledgerKeys)->toHaveCount(1);
+    expect(array_values($ledgerKeys)[0])->toBeGreaterThanOrEqual($expected - 5)->toBeLessThanOrEqual($expected + 5);
+})->with([
+    'the oldest first' => [[23, 1]],
+    'the newest first' => [[1, 23]],
+]);
+
+it('replaces a held entry whose time has already expired', function () {
+    TtlSpyStore::$ttls = [];
+    Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
+    config()->set('cache.stores.spy', ['driver' => 'spy']);
+    config()->set('datadis-client.cache.store', 'spy');
+
+    Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-23 hours'));
+    $key = array_key_first(array_filter(TtlSpyStore::$ttls, fn ($ttl, $k) => str_starts_with($k, 'datadis_query_'), ARRAY_FILTER_USE_BOTH));
+
+    // The held entry keeps a time older than the window (as it would once the first attempt aged out).
+    app('cache')->store('spy')->put($key, time() - RequestLedger::WINDOW_SECONDS - 3600, 3600);
+    expect(heldTime(fn () => monthsAgo(2)))->toBeNull();
+
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
+    expect(abs(heldTime(fn () => monthsAgo(2)) - (time() - 3600)))->toBeLessThanOrEqual(5);
+});
+
+/** An array store that misses the first read of a guard key, as if a worker had sent between two steps of an import. */
+class BlindOnceStore extends ArrayStore
+{
+    public static bool $blind = false;
+
+    public function get($key)
+    {
+        if (self::$blind && str_starts_with((string) $key, 'datadis_query_')) {
+            self::$blind = false;
+
+            return null;
+        }
+
+        return parent::get($key);
+    }
+}
+
+it('does not take back a newer attempt that appeared while the history was being imported', function () {
+    Cache::extend('blind', fn () => Cache::repository(new BlindOnceStore));
+    config()->set('cache.stores.blind', ['driver' => 'blind']);
+    config()->set('datadis-client.cache.store', 'blind');
+
+    // A newer attempt is already held (a worker sent it) ...
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
+
+    // ... but the import does not see it on its first read. It finds the key held when it tries to take it, and must
+    // read again: the held attempt is newer than the one it brings, so it leaves it alone.
+    BlindOnceStore::$blind = true;
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-23 hours')))->toBeFalse();
+
+    expect(abs(heldTime(fn () => monthsAgo(2)) - (time() - 3600)))->toBeLessThanOrEqual(5);
+});

@@ -204,7 +204,7 @@ foreach (SentQuery::where('sent_at', '>', now()->subHours(25))->get() as $sent) 
 ```
 
 - **`rememberConsumption()`**, **`rememberMaxPower()`** and **`rememberReactive()`** match the three queries the guard covers. Consumption takes the point type, and the measurement type and the holder (`authorizedNif:`) if you used them. Maximum power and reactive energy take only the CUPS, the distributor code and the months, which is all Datadis keys them on.
-- They return `true` when they recorded the attempt, and `false` when the attempt is older than the window or the guard already knows it. They never replace a newer attempt.
+- The order of the history does not matter, and it may hold the same query more than once: the guard keeps the newest attempt of each query, since its window is the one that ends last. A call returns `true` when it recorded the attempt, and `false` when the attempt is older than the window or the guard already holds this one or a newer one. It never takes a newer attempt back to an older time.
 - The attempt is remembered for what is left of its window: one sent 23 hours ago blocks a repeat for one more hour and ten minutes.
 - Include the queries Datadis rejected and the ones that timed out: it counts them too.
 - If you cannot be sure the old record is complete (a crashed worker, a query sent from another tool), wait the whole window.

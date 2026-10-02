@@ -24,6 +24,7 @@ use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\MeasurementType;
 use Lenorix\DatadisClient\Values\Nif;
+use Lenorix\LaravelDatadisClient\Support\FixedTtlRepository;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Client\ClientInterface;
@@ -202,10 +203,11 @@ class LaravelDatadisClient
             return false;   // out of the window: nothing to protect
         }
 
-        // claim(), not record(): it never overwrites a newer attempt that the guard already holds. The entry
-        // lives for what is left of the window: a longer life than its time would make the guard, which treats a
-        // held key with an expired time as sent now, block the query for hours after Datadis would take it.
-        return $this->ledger(new class($sentAt) implements ClockInterface
+        // The guard must hold the newest attempt of the history, whatever order it is given in: that is the one
+        // whose window ends last. Each entry lives for what is left of its own window, which is also the time the
+        // guard reads from it (a longer life than its time would make the guard, which treats a held key with an
+        // expired time as sent now, block the query for hours after Datadis would take it).
+        $then = new class($sentAt) implements ClockInterface
         {
             public function __construct(private readonly DateTimeImmutable $at) {}
 
@@ -213,7 +215,32 @@ class LaravelDatadisClient
             {
                 return $this->at;
             }
-        }, max(1, RequestLedger::WINDOW_SECONDS - max(0, $age)))->claim($username, $query) === null;
+        };
+        $remaining = max(1, RequestLedger::WINDOW_SECONDS - max(0, $age));
+        $guard = $this->ledger();
+        $remembered = $this->ledger($then, $remaining);
+
+        $known = $guard->lastAttempt($username, $query);
+
+        if ($known !== null && $known->getTimestamp() >= $sentAt->getTimestamp()) {
+            return false;   // the guard already holds this attempt, or a newer one
+        }
+
+        // A free key is taken in one step, so a worker that sends now cannot slip in between.
+        if ($known === null && $remembered->claim($username, $query) === null) {
+            return true;
+        }
+
+        // The key is held: by an older attempt, by an entry whose time has expired, or by a worker that has just sent.
+        $known = $guard->lastAttempt($username, $query);
+
+        if ($known !== null && $known->getTimestamp() >= $sentAt->getTimestamp()) {
+            return false;
+        }
+
+        $remembered->record($username, $query);   // overwrite it with this attempt, the newer one
+
+        return true;
     }
 
     /**
@@ -222,6 +249,10 @@ class LaravelDatadisClient
     private function ledger(?ClockInterface $clock = null, ?int $ttlSeconds = null): RequestLedger
     {
         $store = $this->store();
+
+        if ($ttlSeconds !== null && $store instanceof CacheRepository) {
+            $store = new FixedTtlRepository($store->getStore(), $ttlSeconds);
+        }
 
         return new RequestLedger(
             $store,
