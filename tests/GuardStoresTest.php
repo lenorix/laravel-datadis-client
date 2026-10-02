@@ -37,7 +37,7 @@ function useGuardStore(string $driver): void
     }
 
     config()->set('cache.stores.guard', $config);
-    config()->set('datadis-client.cache.store', 'guard');
+    config()->set('cache.default', 'guard');
     Cache::forgetDriver('guard');
 }
 

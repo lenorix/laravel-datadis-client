@@ -309,7 +309,7 @@ class LaravelDatadisClient
             // Without the repository's store the lifetime cannot be set: the entry would live a whole window and
             // block the query for hours after Datadis takes it.
             if (! $store instanceof CacheRepository) {
-                throw new ConfigurationException('An earlier attempt can only be remembered on a Laravel cache repository, and datadis-client.cache.store gives '.$store::class.'.');
+                throw new ConfigurationException('An earlier attempt can only be remembered on a Laravel cache repository, and the default cache store gives '.$store::class.'.');
             }
 
             $store = new FixedTtlRepository($store->getStore(), $ttlSeconds);
@@ -370,7 +370,9 @@ class LaravelDatadisClient
      */
     private function settings(string $name): ?array
     {
-        $account = $this->config()->get("datadis-client.accounts.{$name}");
+        // A direct lookup, not Laravel's dot notation: an account may be named `tenant.east`.
+        $accounts = $this->config()->get('datadis-client.accounts');
+        $account = is_array($accounts) ? ($accounts[$name] ?? null) : null;
         $service = $name === self::SERVICES_ACCOUNT ? $this->config()->get('services.datadis') : null;
 
         if (! is_array($account) && ! is_array($service)) {
@@ -490,20 +492,17 @@ class LaravelDatadisClient
         return $this->app->make(Config::class);
     }
 
+    /**
+     * Laravel's own cache, the default store (`CACHE_STORE`): the token and the 24 hour guard are not configured apart,
+     * so they cannot end up on a store the workers do not share by a setting that is easy to forget.
+     */
     private function store(): Repository
     {
-        $name = $this->config()->get('datadis-client.cache.store');
-
-        // Anything but a store name must fail: falling back to the default store could leave the 24 hour guard on a store the workers do not share.
-        if ($name !== null && ! is_string($name)) {
-            throw new ConfigurationException('datadis-client.cache.store must be the name of a cache store or null, '.get_debug_type($name).' given.');
-        }
-
-        $repository = $this->app->make(CacheFactory::class)->store($name === '' ? null : $name);
+        $repository = $this->app->make(CacheFactory::class)->store();
 
         // A store that remembers nothing would refuse every guarded query, the first one included, as already sent.
         if ($repository instanceof CacheRepository && $repository->getStore() instanceof NullStore) {
-            throw new ConfigurationException('datadis-client.cache.store is a store that remembers nothing (the null driver): the 24 hour guard and the login token need a real one.');
+            throw new ConfigurationException('The default cache store is the null driver, which remembers nothing: the 24 hour guard and the login token need a real one (CACHE_STORE=redis or database).');
         }
 
         // The same store without the event dispatcher: Laravel's cache events (and Telescope's cache watcher)

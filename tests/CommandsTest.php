@@ -4,8 +4,12 @@ use Illuminate\Console\OutputStyle;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
+use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\LaravelDatadisClient\Commands\DatadisCommand;
 use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Formatter\OutputFormatter;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 const DISTRIBUTOR_DOWN = ['distributorCode' => '2', 'distributorName' => 'X', 'errorCode' => '500', 'errorDescription' => 'distributor is down'];
 
@@ -360,6 +364,25 @@ it('prints text that looks like console formatting as it is, instead of crashing
 })->with([
     'an account name' => ["datadis:supplies --account='<fg=foo>'"],
 ]);
+
+it('prints a table of rows given as a Collection, as the Laravel command does', function () {
+    $command = new class extends DatadisCommand
+    {
+        public $signature = 'datadis:table-probe {--account=}';
+
+        protected function perform(DatadisClient $client): int
+        {
+            $this->table(['A', 'B'], collect([['1', '<fg=foo>2'], ['3', '4']]));
+
+            return self::SUCCESS;
+        }
+    };
+    $output = new BufferedOutput;
+    $command->setLaravel(app());
+    $command->run(new ArrayInput([]), $output);
+
+    expect($output->fetch())->toContain('‹fg=foo>2', '| 3');
+});
 
 it('prints what Datadis says as it is, even when it looks like console formatting', function () {
     fakeForCommands([

@@ -14,7 +14,7 @@ Use it for anything that fetches Datadis data on a schedule or in bulk: a nightl
 Datadis refuses an identical consumption or maximum power query for 24 hours, and the manual says a call that failed because of the caller's own mistake cannot be repeated either, so a rejected call counts. A call that timed out may have counted too. The client applies the same rule to the reactive energy query, to be safe.
 
 - A query is "used for today" once it may have reached Datadis. Only `requestSent === false` on a `DatadisException` means it is still available.
-- The package records each attempt in the shared cache store (`datadis-client.cache.store`), so a second worker, job or deploy gets `RepetitionWindowException` before anything is sent. Keep that store persistent and shared, and never flush it.
+- The package records each attempt in Laravel's default cache store (`CACHE_STORE`), so a second worker, job or deploy gets `RepetitionWindowException` before anything is sent. It must be shared and persistent (`redis` or `database`, not `file` or `array`), and never flushed.
 - Changing `datadis-client.ledger.key` (or `APP_KEY` when no key is set) forgets every recorded query.
 - The guard keeps a query for 24 hours and 10 minutes: asking the same one at the same time the next day is refused. Schedule a repeat of the same query every second day.
 - Switching from a record of your own (a table, say)? The guard does not know it: before any worker sends a guarded query with the new client, either wait 24 hours and 10 minutes, or seed the guard once with `LaravelDatadisClient::rememberConsumption($cups, $distributorCode, $pointType, $from, $to, at: $sentAt)` (`$cups` a `Cups`, `$from` and `$to` `Month` values from `Month::fromString('2026/07')`, `$sentAt` a `DateTimeInterface` at most ten minutes ahead of now) for every query sent in the last 25 hours, rejected and timed-out ones included (`rememberMaxPower()` and `rememberReactive()` take only the CUPS, the code and the months). The order does not matter and repeats are fine: the guard keeps the newest attempt of each query. Maximum power and reactive energy are one guard entry, so remembering one blocks the other. Pass `account:` for a named account, and pause the workers and the scheduler while you import. If the old record may be incomplete, wait.
@@ -27,15 +27,13 @@ A planning job decides which months are worth asking for, and one queued job per
 
 - The **planning job** only reads (the login and the supplies list). Reads are safe to retry, so it may be retried, and nothing is dispatched until the lookup has succeeded.
 - Each **range job** makes one data query, which must never be retried by the queue. It takes the codes from the planner, so it does not list the supplies again.
-- **Unique jobs take their lock from the default cache store**, unless the job says otherwise with `uniqueVia()`. The range job uses the store of the guard (`datadis-client.cache.store`), which the workers must share: with a default store of `array`, or of `file` across several servers, the same range could be queued twice.
+- **Unique jobs take their lock from the same default cache store**, so the range job needs nothing more than `ShouldBeUnique` and a `uniqueId()`: with a default store of `array`, or of `file` across several servers, the same range could be queued twice.
 
 ```php
 use DateTimeImmutable;
-use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Cache;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\NoDataException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
@@ -101,11 +99,6 @@ class SyncSupplyRange implements ShouldQueue, ShouldBeUnique
     public function uniqueId(): string
     {
         return "{$this->cups}:{$this->from}:{$this->to}";
-    }
-
-    public function uniqueVia(): Repository
-    {
-        return Cache::store(config('datadis-client.cache.store') ?: null);   // the store the workers share, not the default one
     }
 
     public function handle(DatadisClient $client): void

@@ -82,16 +82,15 @@ it('shares the login token between clients through the cache', function () {
     expect($logins)->toHaveCount(1);
 });
 
-it('uses the configured cache store', function () {
-    config()->set('cache.stores.datadis', ['driver' => 'array']);
-    config()->set('datadis-client.cache.store', 'datadis');
+it('keeps the token in the default cache store of Laravel', function () {
+    config()->set('cache.stores.other', ['driver' => 'array']);
     fakeDatadis();
 
     app(DatadisClient::class)->getSupplies();
 
     expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'login')))->toHaveCount(1);
-    // The default store never saw the token: a client on it logs in again.
-    config()->set('datadis-client.cache.store', null);
+    // Another default store never saw the token: a client on it logs in again.
+    config()->set('cache.default', 'other');
     app(DatadisClient::class)->getSupplies();
     expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'login')))->toHaveCount(2);
 });
@@ -199,7 +198,7 @@ it('publishes the config under the package tag and ships sensible defaults', fun
     expect(config('datadis-client.accounts.default.api_version'))->toBe('v2');
     expect(config('datadis-client.accounts.default.timezone'))->toBe('Europe/Madrid');
     expect(config('datadis-client.accounts.default.timeout'))->toBe(120);
-    expect(config('datadis-client'))->toHaveKeys(['cache', 'ledger']);
+    expect(config('datadis-client'))->toHaveKey('ledger')->not->toHaveKey('cache');
 
     // Nothing is copied: a published file in Testbench's shared skeleton would race with parallel tests.
     $published = ServiceProvider::pathsToPublish(LaravelDatadisClientServiceProvider::class, 'datadis-client-config');
@@ -358,23 +357,6 @@ it('treats an empty stack as unset', function () {
     expect(fn () => app(DatadisClient::class)->getSupplies())->toThrow(TransportException::class);
 });
 
-it('refuses a cache store that is not a store name, instead of falling back to the default one', function (mixed $store) {
-    config()->set('datadis-client.cache.store', $store);
-
-    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'must be the name of a cache store or null');
-})->with([
-    'array' => [['redis']],
-    'int' => [1],
-    'false' => [false],
-    'true' => [true],
-]);
-
-it('uses the default cache store when none is named', function (?string $store) {
-    config()->set('datadis-client.cache.store', $store);
-
-    expect(app(Manager::class)->account())->toBeInstanceOf(DatadisClient::class);
-})->with([null, '']);
-
 it('offers the operations that change data through the facade and the injected client', function (Closure $client) {
     Http::fake([
         '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
@@ -463,7 +445,7 @@ it('refuses a guarded query without sending it when the cache store cannot be us
     fakeDatadis();
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
     config()->set('cache.stores.broken', ['driver' => 'broken']);
-    config()->set('datadis-client.cache.store', 'broken');
+    config()->set('cache.default', 'broken');
 
     expect(fn () => app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo()))->toThrow(LedgerUnavailableException::class);
     expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-consumption-data')))->toHaveCount(0);
@@ -675,9 +657,9 @@ it('has no report level to set when it is null or empty', function (mixed $level
     expect(app(Manager::class)->reportLevel())->toBeNull();
 })->with([null, '']);
 
-it('refuses a cache store that remembers nothing, instead of refusing every query as already sent', function () {
+it('refuses a default cache store that remembers nothing, instead of refusing every query as already sent', function () {
     config()->set('cache.stores.nothing', ['driver' => 'null']);
-    config()->set('datadis-client.cache.store', 'nothing');
+    config()->set('cache.default', 'nothing');
 
     expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'remembers nothing');
 });
@@ -704,4 +686,18 @@ it('trims the default account name', function () {
     app(DatadisClient::class)->getSupplies();
 
     Http::assertSent(fn (Request $r) => str_contains($r->url(), 'login') && $r['username'] === '12345678Z');
+});
+
+it('resolves an account whose name has a dot, and a name that only looks like a path into another one', function () {
+    config()->set('datadis-client.accounts', [
+        'default' => ['username' => '00000000T', 'password' => 'x'],
+        'tenant.east' => ['username' => '12345678Z', 'password' => 'y'],
+    ]);
+    fakeDatadis();
+
+    app(Manager::class)->account('tenant.east')->getSupplies();
+
+    expect(array_column(logins(), 'username'))->toBe(['12345678Z']);
+    // `default.username` is a path into the default account, not an account.
+    expect(fn () => app(Manager::class)->account('default.username'))->toThrow(InvalidArgumentException::class);
 });

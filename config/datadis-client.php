@@ -49,25 +49,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Cache
-    |--------------------------------------------------------------------------
-    |
-    | The login token and the 24 hour guard live in this cache store, shared by
-    | every worker, so the guard needs a store whose add() is atomic: redis,
-    | memcached, database and dynamodb work from any host; `file` locks the
-    | file, so it only coordinates processes on the same host and filesystem
-    | (not several servers); `array` lives in one process, so it protects
-    | nothing across workers or runs, and the `null` driver refuses everything.
-    | Null uses the default store. Protect it
-    | like a password: it holds the Datadis token.
-    |
-    */
-    'cache' => [
-        'store' => env('DATADIS_CACHE_STORE'),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
     | 24 hour guard
     |--------------------------------------------------------------------------
     |
@@ -78,6 +59,12 @@ return [
     | not decoded). Null derives one from `app.key`, which must give at least
     | 16 bytes. Anything else fails. Changing the secret, or rotating `app.key`
     | when it is derived, forgets every query already made.
+    |
+    | There is no cache setting: the login token and this guard use Laravel's own
+    | cache, the default store (`CACHE_STORE`), shared by every worker. Use `redis`
+    | or `database` (memcached works too): `file` only coordinates processes of
+    | one server, `array` lives in one process and `null` remembers nothing. The
+    | cache holds the Datadis token: protect it like a password.
     |
     */
     'ledger' => [

@@ -81,7 +81,7 @@ abstract class DatadisCommand extends Command
     {
         $neutral = static fn (mixed $cell): mixed => is_string($cell) ? str_replace('<', '‹', $cell) : $cell;
 
-        parent::table($headers, array_map(static fn (mixed $row): mixed => is_array($row) ? array_map($neutral, $row) : $row, (array) $rows), $tableStyle, $columnStyles);
+        parent::table($headers, array_map(static fn (mixed $row): mixed => is_array($row) ? array_map($neutral, $row) : $row, $rows instanceof Arrayable ? $rows->toArray() : $rows), $tableStyle, $columnStyles);
     }
 
     /**

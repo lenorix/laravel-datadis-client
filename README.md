@@ -86,7 +86,7 @@ Every call, result and error is documented in the [client's README](https://gith
 
 ### Use another account
 
-Add it under `accounts` in `config/datadis-client.php`:
+Add it under `accounts` in `config/datadis-client.php` (a name with a dot, like `tenant.east`, works too):
 
 ```php
 'accounts' => [
@@ -172,7 +172,7 @@ The exit code tells a script what happened:
 
 Datadis refuses an identical consumption or maximum power query for 24 hours, and counts the refused ones too. The package applies the same rule to reactive energy, to be safe. The package stops a repeat before sending it and throws `RepetitionWindowException`, which is reported as a warning.
 
-- **Use a shared cache store** for `DATADIS_CACHE_STORE`: Redis, Memcached or your database. `file` only coordinates processes on one server, and `array` only protects within one process, not across workers.
+- **Use `redis` or `database` as your cache** (`CACHE_STORE`). The package keeps the token and the guard in Laravel's default cache and has no cache setting of its own. Redis, Memcached and the database are shared by every worker and server; `file` only coordinates processes on one server, and `array` lives in one process, so with it the guard cannot stop another worker. The `null` driver remembers nothing and is refused.
 - **Set `DATADIS_LEDGER_KEY`.** Without it the secret is derived from `APP_KEY`, and rotating the key makes the guard forget the last 24 hours.
 - **Schedule repeats every second day.** The guard keeps a query for 24 hours and 10 minutes, so asking the same one at the same time the next day is refused.
 - **Never loop over a data query**, and never add a retry of your own around one.
@@ -207,7 +207,7 @@ foreach (SentQuery::where('sent_at', '>', now()->subHours(25))->get() as $sent) 
 - The order of the history does not matter, and it may hold the same query more than once: the guard keeps the newest attempt of each query, since its window is the one that ends last. A call returns `true` when it recorded the attempt, and `false` when the attempt is older than the window or the guard already holds this one or a newer one. It never takes a newer attempt back to an older time.
 - The attempt is remembered for what is left of its window: one sent 23 hours ago blocks a repeat for one more hour and ten minutes. `at` must be a `DateTimeInterface` (a date column cast by Eloquent, not a string). A time more than ten minutes ahead of now throws before anything is recorded. A time that is wrongly in the past is **not** caught: a UTC wall clock read as Madrid time lands one or two hours early, and the protection then ends that much early, so Datadis would refuse and count the repeat. Check the timezone of the column; if you are unsure of it, pass `at: now()` (it over-protects, which is always safe).
 - Pass `account: 'second'` for a named account. Without it the entries are kept for the default account only, and the other accounts stay unguarded.
-- Each query is imported under a lock on your cache store, so two imports of the same query cannot leave the older time. If another import does not finish within two seconds the call throws a `LedgerUnavailableException`. On a store without locks, import from one process. The lock needs your cache store to be a Laravel one (`Cache::extend()` repositories are); a custom repository of another class makes the call throw a `ConfigurationException`, since it could not be given a lifetime.
+- Each query is imported under a lock on your cache, so two imports of the same query cannot leave the older time. If another import does not finish within two seconds the call throws a `LedgerUnavailableException`. On a store without locks, import from one process. The lock needs your cache store to be a Laravel one (`Cache::extend()` repositories are); a custom repository of another class makes the call throw a `ConfigurationException`, since it could not be given a lifetime.
 - **Stop the workers while you import** (pause the queue and the scheduler). The import never moves back a newer attempt that it reads, but the lock only serialises imports against each other: a worker that sends at the exact moment of an overwrite can lose its time. Only the pause rules that out.
 - Include the queries Datadis rejected and the ones that timed out: it counts them too.
 - If you cannot be sure the old record is complete (a crashed worker, a query sent from another tool), wait the whole window.
@@ -221,7 +221,7 @@ Network errors and `502`, `503` and `504` answers are retried twice, with backof
 
 The calls go through plain Guzzle, so Laravel's HTTP events, global middleware and recorders (Telescope, Nightwatch) never see the login password or the token. Keep it that way outside tests.
 
-The token is kept in your cache store, which the package uses without Laravel's cache events, so the cache watchers do not record it either. The store itself still holds it: protect it like a password.
+The token is kept in Laravel's default cache, which the package uses without Laravel's cache events, so the cache watchers do not record it either. The store itself still holds it: protect it like a password.
 
 ### Queued jobs
 
@@ -251,7 +251,6 @@ All keys are in `config/datadis-client.php`.
 |---|---|---|
 | `default` | Account used by the container, the facade and the commands (`DATADIS_ACCOUNT`). | `default` |
 | `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`, `DATADIS_API_VERSION`), `timezone` (`DATADIS_TIMEZONE`), `timeout` (`DATADIS_TIMEOUT`), `connect_timeout` (`DATADIS_CONNECT_TIMEOUT`), `base_url`, `user_agent`, `check_username_control`. The account named `default` takes its credentials from `services.datadis`. | `v2`, `Europe/Madrid`, 120 s, 10 s |
-| `cache.store` | Cache store for the token and the 24 hour guard (`DATADIS_CACHE_STORE`). A value that is not a text fails, and so does a name that is not a defined store or a store of the `null` driver, which remembers nothing. | default store |
 | `ledger.key` | Secret of at least 16 bytes for the guard (`DATADIS_LEDGER_KEY`). | from `APP_KEY` |
 | `http.stack` | `guzzle` or `laravel` (`DATADIS_HTTP_STACK`). `laravel` lets Laravel's events and recorders see the password and the token. | `guzzle`; `laravel` in tests |
 | `http.retries` | `max` (0 to 10, `DATADIS_HTTP_RETRIES`), `base_delay_ms`, `max_delay_ms`. | 2, 1000, 30000 |
