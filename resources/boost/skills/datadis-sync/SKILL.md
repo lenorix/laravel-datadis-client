@@ -17,6 +17,7 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 - The package records each attempt in the shared cache store (`datadis-client.cache.store`), so a second worker, job or deploy gets `RepetitionWindowException` before anything is sent. Keep that store persistent and shared, and never flush it.
 - Changing `datadis-client.ledger.key` (or `APP_KEY` when no key is set) forgets every recorded query.
 - The guard keeps a query for 24 hours and 10 minutes: asking the same one at the same time the next day is refused. Schedule a repeat of the same query every second day.
+- Switching from a record of your own (a table, say)? The guard does not know it: before any worker sends a guarded query with the new client, either wait 24 hours and 10 minutes, or seed the guard once with `LaravelDatadisClient::rememberAttempt(Endpoint::Consumption, $cups, $distributorCode, $from, $to, pointType: $pointType, at: $sentAt)` for every query sent in the last 25 hours, rejected and timed-out ones included. For maximum power and reactive energy give only the CUPS, the code and the months. If the old record may be incomplete, wait.
 - Never wrap a data query in a retry: not `$tries`, not `retry()`, not `RetryingClient`. Let the next scheduled run try again tomorrow.
 - Store the whole result, `raw` included: you cannot ask again for 24 hours.
 

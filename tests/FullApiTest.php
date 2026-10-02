@@ -46,32 +46,6 @@ function everyClientCall(): array
     ];
 }
 
-function fakeEverything(): void
-{
-    $list = fn (string $key) => Http::response([$key => [], 'distributorError' => []]);
-    $text = fn (string $body) => Http::response($body, 200, ['Content-Type' => 'text/plain']);
-
-    Http::fake([
-        '*/nikola-auth/tokens/login' => $text(fakeToken()),
-        '*/get-supplies*' => Http::response(['supplies' => [[
-            'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
-        ]], 'distributorError' => []]),
-        '*/get-distributors-with-supplies*' => Http::response(['distributorError' => []]),
-        '*/get-contract-detail*' => $list('contract'),
-        '*/get-consumption-data*' => $list('timeCurve'),
-        '*/get-max-power*' => $list('maxPower'),
-        '*/get-reactive-data*' => Http::response(['reactiveEnergy' => [], 'distributorError' => []]),
-        '*/new-authorization*' => $text('created'),
-        '*/cancel-authorization*' => $text('cancelled'),
-        '*/list-authorization*' => $list('authorizations'),
-        '*/get-groups*' => $list('groups'),
-        '*/partner-user-list*' => $list('users'),
-        '*/partner-delete-user*' => $text('unlinked'),
-        '*/partner-agreement-date*' => Http::response(['partnerAgreementDate' => null]),
-        '*/api-public/api-*' => Http::response([]),
-    ]);
-}
-
 it('covers every public method of the client', function () {
     $methods = array_values(array_diff(get_class_methods(DatadisClient::class), ['__construct', 'fromArray']));
 

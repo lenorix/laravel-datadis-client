@@ -2,6 +2,8 @@
 
 namespace Lenorix\LaravelDatadisClient;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\Repository;
@@ -9,15 +11,22 @@ use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as Http;
 use InvalidArgumentException;
+use Lenorix\DatadisClient\Data\Supply;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\DatadisConfig;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
+use Lenorix\DatadisClient\Http\Endpoint;
 use Lenorix\DatadisClient\Http\GuzzleClientFactory;
 use Lenorix\DatadisClient\Http\RetryingClient;
 use Lenorix\DatadisClient\PublicApiClient;
+use Lenorix\DatadisClient\Time\Month;
+use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\DatadisClient\Values\MeasurementType;
+use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Client\ClientInterface;
 
 /**
@@ -59,18 +68,93 @@ class LaravelDatadisClient
             throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
         }
 
-        $store = $this->store();
-
         return DatadisClient::fromArray(
             $settings,
             http: $this->http($settings),
-            tokenCache: $store,
-            ledger: new RequestLedger(
-                $store,
-                new RequestFingerprinter($this->ledgerKey()),
-                atomic: new LaravelAtomicStore($store),
-            ),
+            tokenCache: $this->store(),
+            ledger: $this->ledger(),
         );
+    }
+
+    /**
+     * Records that a guarded query was sent before this package kept the record, so that the 24 hour guard
+     * knows it: for the moment you switch from a record of your own (a table, say) to this package's.
+     *
+     * Give the query as it was sent and, in `$at`, when. It is remembered for what is left of the window,
+     * so a query sent 23 hours ago blocks a repeat for one more hour and ten minutes. An attempt older than
+     * the window, or one the guard already knows, is not recorded. Do it once, before any worker sends a
+     * guarded query with the new client.
+     *
+     * For maximum power and reactive energy leave out `$pointType`, `$measurementType` and `$authorizedNif`:
+     * Datadis keys those queries on the CUPS, the distributor code and the months only.
+     *
+     * @return bool whether it was recorded
+     *
+     * @throws InvalidArgumentException when the endpoint is not guarded, a value is not valid, `$at` is in the
+     *                                  future or the account is not configured
+     */
+    public function rememberAttempt(
+        Endpoint $endpoint,
+        Cups $cups,
+        string $distributorCode,
+        Month $startDate,
+        ?Month $endDate = null,
+        ?int $pointType = null,
+        MeasurementType $measurementType = MeasurementType::Hourly,
+        ?Nif $authorizedNif = null,
+        ?DateTimeInterface $at = null,
+        ?string $account = null,
+    ): bool {
+        if (! $endpoint->isGuarded()) {
+            throw new InvalidArgumentException('Only consumption, maximum power and reactive energy queries are subject to the 24 hour rule.');
+        }
+
+        if (! Supply::isValidDistributorCode($distributorCode)) {
+            throw new InvalidArgumentException('The distributor code must be 1 to 10 letters, digits, dashes or underscores.');
+        }
+
+        $username = $this->username($account);
+        $sentAt = DateTimeImmutable::createFromInterface($at ?? new DateTimeImmutable);
+        $age = time() - $sentAt->getTimestamp();
+
+        if ($age < -RequestLedger::CLOCK_TOLERANCE_SECONDS) {
+            throw new InvalidArgumentException('A query cannot have been sent in the future.');
+        }
+
+        if ($age >= RequestLedger::WINDOW_SECONDS) {
+            return false;   // out of the window: nothing to protect
+        }
+
+        $query = [
+            'cups' => $cups->value(),
+            'distributorCode' => $distributorCode,
+            'startDate' => $startDate->format(),
+            'endDate' => ($endDate ?? $startDate)->format(),
+        ];
+
+        if ($endpoint === Endpoint::Consumption) {
+            if ($pointType === null || ! Supply::isValidPointType($pointType)) {
+                throw new InvalidArgumentException('A consumption query needs its point type, a whole number from 1 to 5.');
+            }
+
+            // As the client sends it: the account's own NIF is omitted.
+            $query += [
+                'measurementType' => $measurementType->value,
+                'pointType' => $pointType,
+                'authorizedNif' => $authorizedNif === null || $authorizedNif->value() === $username ? null : $authorizedNif->value(),
+            ];
+        }
+
+        // claim(), not record(): it never overwrites a newer attempt that the guard already holds.
+        return $this->ledger(new class($sentAt) implements ClockInterface
+        {
+            public function __construct(private readonly DateTimeImmutable $at) {}
+
+            public function now(): DateTimeImmutable
+            {
+                return $this->at;
+            }
+        })->claim($username, $query) === null;
     }
 
     /**
@@ -87,6 +171,27 @@ class LaravelDatadisClient
             ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
 
         return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http($settings), tokenCache: $this->store());
+    }
+
+    private function ledger(?ClockInterface $clock = null): RequestLedger
+    {
+        $store = $this->store();
+
+        return new RequestLedger(
+            $store,
+            new RequestFingerprinter($this->ledgerKey()),
+            $clock,
+            atomic: new LaravelAtomicStore($store),
+        );
+    }
+
+    /** The username the guard keys its entries on: the account's, trimmed and in capitals. */
+    private function username(?string $name): string
+    {
+        $settings = $this->settings($name ??= $this->defaultAccount())
+            ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
+
+        return DatadisConfig::fromArray($settings)->username();
     }
 
     /**

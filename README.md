@@ -177,6 +177,40 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 - **Schedule repeats every second day.** The guard keeps a query for 24 hours and 10 minutes, so asking the same one at the same time the next day is refused.
 - **Never loop over a data query**, and never add a retry of your own around one.
 
+### Moving from your own record of queries
+
+The guard only knows the queries sent through this package. If your app kept its own record before (a table, say), the first run after the switch could repeat a query sent in the last 24 hours and 10 minutes. Datadis would refuse it, and count it.
+
+Before any worker sends a guarded query with the new client, do one of these:
+
+- **Wait** 24 hours and 10 minutes without sending any.
+- **Or tell the guard about the recent queries**, once, with the time each was sent:
+
+```php
+use Lenorix\DatadisClient\Http\Endpoint;
+use Lenorix\DatadisClient\Time\Month;
+use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
+
+foreach (SentQuery::where('sent_at', '>', now()->subHours(25))->get() as $sent) {
+    Datadis::rememberAttempt(
+        Endpoint::Consumption,
+        Cups::fromString($sent->cups),
+        $sent->distributor_code,
+        Month::fromString($sent->start_month),
+        Month::fromString($sent->end_month),
+        pointType: $sent->point_type,
+        at: $sent->sent_at,
+    );
+}
+```
+
+- It returns `true` when it recorded the attempt, and `false` when the attempt is older than the window or the guard already knows it. It never replaces a newer attempt.
+- For consumption give the point type, and the measurement type and holder when you used them. For maximum power (`Endpoint::MaxPower`) and reactive energy (`Endpoint::Reactive`) give only the CUPS, the distributor code and the months.
+- Include the queries Datadis rejected and the ones that timed out: it counts them too.
+- If you cannot be sure the old record is complete (a crashed worker, a query sent from another tool), wait the whole window.
+- Keep the old record until the window has passed, and do not send guarded queries from both systems at once.
+
 ### Failures and retries
 
 Network errors and `502`, `503` and `504` answers are retried twice, with backoff, for the login, the lists and the other reads. Consumption, maximum power, reactive energy and every call that changes data are never retried, because Datadis may already have counted them. Set `DATADIS_HTTP_RETRIES=0` to turn retries off.
