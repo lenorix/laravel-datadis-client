@@ -41,7 +41,7 @@ public function handle(DatadisClient $client): void
 
 - Credentials: `config/services.php`, key `datadis` (`DATADIS_USERNAME`, `DATADIS_PASSWORD`). Other accounts and settings: `config/datadis-client.php`. Never hard-code them.
 - The cache: the token and the guard use Laravel's default cache store (`CACHE_STORE`), with no setting of the package. Use `redis` or `database`: `file` only coordinates one server, `array` only protects within one process, and `null` is refused.
-- `datadis-client.ledger.key` (`DATADIS_LEDGER_KEY`): set it; otherwise `APP_KEY` is used and rotating it makes the guard forget the last 24 hours.
+- `datadis-client.ledger.key` (`DATADIS_LEDGER_KEY`): optional, at least 16 bytes. Without it the secret is derived from `APP_KEY`, and rotating `APP_KEY` makes the guard forget the last 24 hours, so set it if you rotate `APP_KEY`.
 - Harmless reads are retried by the package after network errors and 502, 503 and 504 (`datadis-client.http.retries`); data queries and writes never are.
 
 ### More detail

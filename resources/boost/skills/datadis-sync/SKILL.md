@@ -178,7 +178,7 @@ Datadis is slow: a call can take tens of seconds, and each one is allowed up to 
 - **The range job**: a login when the token is not cached, 420 seconds at worst, plus the query, 120: 540 seconds, so `$timeout = 600`. With the token cached it takes the query alone.
 - **The planning job**: the login and the supplies list, 2 x 420 = 840 seconds at worst, so `$timeout = 900`.
 - Set the job's `$timeout` (it takes precedence over the worker's `--timeout`, which is 60 seconds by default). It needs the `pcntl` PHP extension.
-- Keep the connection's `retry_after` (90 seconds by default, in `config/queue.php`) greater than the longest job timeout: Laravel says a job's timeout "should always be less than its retry after value", or the job may be attempted again before it finishes. For the planning job that is two runs at once; for a range job, which has `$tries = 1`, the queue fails it as attempted too many times while it still runs, and the guard would refuse a second send anyway. Here the `retry_after` is 930 seconds or more, so give the Datadis jobs a connection of their own with that `retry_after` instead of raising it for every queue (the two jobs above call `onConnection('datadis')`; define the `datadis` connection in `config/queue.php` with `'retry_after' => 930`).
+- Keep the connection's `retry_after` (90 seconds by default, in `config/queue.php`) greater than the longest job timeout: Laravel says a job's timeout "should always be less than its retry after value", or the job may be attempted again before it finishes. For the planning job that is two runs at once; for a range job, which has `$tries = 1`, the queue fails it as attempted too many times while it still runs, and the guard would refuse a second send anyway. Here the `retry_after` is 930 seconds or more, so give the Datadis jobs a connection of their own with that `retry_after` instead of raising it for every queue (the jobs above call `onConnection('datadis')`; define the `datadis` connection in `config/queue.php` with `'retry_after' => 930`).
 - Keep the worker's `--timeout` several seconds shorter than `retry_after`.
 - The job timeout does not interrupt a blocking HTTP call: the package already gives Guzzle its own timeouts. Lower `datadis-client.accounts.*.timeout` if you want smaller job timeouts.
 
@@ -192,13 +192,13 @@ Datadis is slow: a call can take tens of seconds, and each one is allowed up to 
 ### Data
 
 - Plan ranges with `MonthPlanner::ranges(..., supply: $supply)`: a range before the contract start is refused locally, and a `401` on a guarded query is never sent again.
-- The current month keeps changing for some days after it ends and has no data for the last two days. A run of trailing zeros is not real. Re-sync only months that can still change, once a day.
+- The current month keeps changing for some days after it ends and has no data for the last two days. A run of trailing zeros is not real. Re-sync only months that can still change, once a day, with `getLatestConsumptionDataOf()` (see the daily job above) rather than the same range every day.
 - Upsert readings by supply and real `start`, not by date and time: the autumn change repeats `03:00`.
 - Keep energy as decimal strings or scaled integers, never floats.
 
 ### Accounts
 
-- One account, one login: the token is cached in the shared store, so many workers do not log in again.
+- One account, one login: the token is cached in Laravel's default cache store, so many workers do not log in again.
 - Do not start the jobs of many accounts at the same instant without need.
 
 ## Sources
