@@ -16,6 +16,7 @@ Datadis refuses an identical consumption, maximum power or reactive query for 24
 - A query is "used for today" once it may have reached Datadis. Only `requestSent === false` on a `DatadisException` means it is still available.
 - The package records each attempt in the shared cache store (`datadis-client.cache.store`), so a second worker, job or deploy gets `RepetitionWindowException` before anything is sent. Keep that store persistent and shared, and never flush it.
 - Changing `datadis-client.ledger.key` (or `APP_KEY` when no key is set) forgets every recorded query.
+- The guard keeps a query for 24 hours and 10 minutes: asking the same one at the same time the next day is refused. Schedule a repeat of the same query every second day.
 - Never wrap a data query in a retry: not `$tries`, not `retry()`, not `RetryingClient`. Let the next scheduled run try again tomorrow.
 - Store the whole result, `raw` included: you cannot ask again for 24 hours.
 
@@ -40,7 +41,7 @@ class PlanSupplySync implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public string $cups) {}
+    public function __construct(public string $cups, public int $months = 2) {}
 
     public function handle(DatadisClient $client): void // resolve here: the client is not serialisable
     {
@@ -52,8 +53,8 @@ class PlanSupplySync implements ShouldQueue
         $now = new DateTimeImmutable;
         $current = Month::current($now);
 
-        // At most 24 ranges, one month each: one queued job per range.
-        foreach (MonthPlanner::ranges($current->addMonths(-23), $current, $now, supply: $supply) as [$from, $to]) {
+        // One month each, one queued job per range: the last $months months (24 at most).
+        foreach (MonthPlanner::ranges($current->addMonths(-($this->months - 1)), $current, $now, supply: $supply) as [$from, $to]) {
             SyncSupplyRange::dispatch($this->cups, $from->format(), $to->format());
         }
     }
@@ -91,11 +92,15 @@ class SyncSupplyRange implements ShouldQueue
 }
 ```
 
-Schedule the planning job once a day:
+Run the backfill once, and schedule only the months that can still change:
 
 ```php
-Schedule::job(new PlanSupplySync($cups))->dailyAt('04:00');
+PlanSupplySync::dispatch($cups, months: 24);   // once: the whole history
+
+Schedule::job(new PlanSupplySync($cups, months: 2))->cron('0 4 */2 * *');   // every second day: this month and the previous one
 ```
+
+Every second day, not every day: the guard keeps a query for 24 hours and 10 minutes (a margin for clock differences with Datadis). A job that repeats the same query at the same time each day is refused locally every other run. Those refused runs are harmless, since the job catches `RepetitionWindowException`, but they fetch nothing.
 
 ## Rules of thumb
 
@@ -103,7 +108,7 @@ Schedule::job(new PlanSupplySync($cups))->dailyAt('04:00');
 
 - Datadis is slow: a query can take tens of seconds, and each call is allowed up to `datadis-client.accounts.*.timeout` (default 120 s).
 - A job's timeout must cover what it does in sequence: the login, the supplies list and each query. Twenty-four months in one job could need almost an hour, so make one job per range.
-- Keep the queue's `retry_after` and the worker's `--timeout` above the job timeout, or the job is released and runs twice.
+- Keep the queue's `retry_after` above the job timeout, and the worker's `--timeout` at or above it. Laravel's default `retry_after` is 90 seconds, so for `$timeout = 300` set `retry_after` to 330 or more in `config/queue.php`, and run `php artisan queue:work --timeout=300`. Otherwise the job is released while it still runs, and the query is sent twice.
 
 ### Retries
 
