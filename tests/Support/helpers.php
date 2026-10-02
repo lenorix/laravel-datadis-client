@@ -3,7 +3,11 @@
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Time\Month;
+use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
 
 const CUPS = 'ES0000000000000000AA0A';
 
@@ -85,4 +89,33 @@ function fakeEverything(): void
         '*/partner-agreement-date*' => Http::response(['partnerAgreementDate' => null]),
         '*/api-public/api-*' => Http::response([]),
     ]);
+}
+
+/** How many guarded requests reached Datadis. */
+function guardedRequests(): int
+{
+    return Http::recorded(fn (Request $r) => preg_match('/get-(consumption-data|max-power|reactive-data)/', $r->url()) === 1)->count();
+}
+
+/** The supply the client finds, so that the Of() calls can be made. */
+function supplyOf(DatadisClient $client)
+{
+    return $client->findSupply(Cups::fromString(CUPS));
+}
+
+/** The time the guard holds for a maximum power query of the default account, or null. */
+function heldTime(Closure $month): ?int
+{
+    $ledger = (fn () => $this->ledger())->call(app(Manager::class));
+
+    return $ledger->lastAttempt('00000000T', ['cups' => CUPS, 'distributorCode' => '2', 'startDate' => $month()->format(), 'endDate' => $month()->format(), 'authorizedNif' => null])?->getTimestamp();
+}
+
+/** The key of the lock an import takes for a maximum power query of the default account. */
+function importLockName(Closure $month): string
+{
+    $manager = app(Manager::class);
+    $fingerprinter = new RequestFingerprinter((fn () => $this->ledgerKey())->call($manager));
+
+    return 'datadis_import_'.substr($fingerprinter->fingerprint('00000000T', ['cups' => CUPS, 'distributorCode' => '2', 'startDate' => $month()->format(), 'endDate' => $month()->format()]), 0, 40);
 }

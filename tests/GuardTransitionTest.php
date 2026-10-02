@@ -6,32 +6,17 @@ use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Cache\Store;
 use Illuminate\Filesystem\Filesystem;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
-use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\MeasurementType;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
-
-/** How many guarded requests reached Datadis. */
-function guardedRequests(): int
-{
-    return Http::recorded(fn (Request $r) => preg_match('/get-(consumption-data|max-power|reactive-data)/', $r->url()) === 1)->count();
-}
-
-/** The supply the client finds, so that the Of() calls can be made. */
-function supplyOf(DatadisClient $client)
-{
-    return $client->findSupply(Cups::fromString(CUPS));
-}
 
 it('makes the client refuse what a record of your own says was sent', function (Closure $remember, Closure $send) {
     fakeEverything();
@@ -185,14 +170,6 @@ it('keeps an old attempt only for what is left of its window, not for a whole ne
     'sent 23 hours ago: an hour and ten minutes' => [23, RequestLedger::WINDOW_SECONDS - 23 * 3600],
 ]);
 
-/** The time the guard holds for a maximum power query of the default account, or null. */
-function heldTime(Closure $month): ?int
-{
-    $ledger = (fn () => $this->ledger())->call(app(Manager::class));
-
-    return $ledger->lastAttempt('00000000T', ['cups' => CUPS, 'distributorCode' => '2', 'startDate' => $month()->format(), 'endDate' => $month()->format(), 'authorizedNif' => null])?->getTimestamp();
-}
-
 it('keeps the newest attempt of a history, whatever the order it is imported in', function (array $hoursAgo) {
     $newest = min($hoursAgo);
     $month = fn () => monthsAgo(2);
@@ -281,15 +258,6 @@ it('does not take back a newer attempt that appeared while the history was being
 
     expect(abs(heldTime(fn () => monthsAgo(2)) - (time() - 3600)))->toBeLessThanOrEqual(5);
 });
-
-/** The key of the lock an import takes for a maximum power query of the default account. */
-function importLockName(Closure $month): string
-{
-    $manager = app(Manager::class);
-    $fingerprinter = new RequestFingerprinter((fn () => $this->ledgerKey())->call($manager));
-
-    return 'datadis_import_'.substr($fingerprinter->fingerprint('00000000T', ['cups' => CUPS, 'distributorCode' => '2', 'startDate' => $month()->format(), 'endDate' => $month()->format()]), 0, 40);
-}
 
 it('takes a lock per query while it imports, so two imports cannot leave the older time', function () {
     $month = fn () => monthsAgo(2);

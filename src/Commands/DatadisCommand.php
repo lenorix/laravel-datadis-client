@@ -5,6 +5,7 @@ namespace Lenorix\LaravelDatadisClient\Commands;
 use DateTimeImmutable;
 use DateTimeZone;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Support\Arrayable;
 use InvalidArgumentException;
 use Lenorix\DatadisClient\Data\ApiResult;
 use Lenorix\DatadisClient\Data\Supply;
@@ -14,6 +15,8 @@ use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient;
+use Symfony\Component\Console\Formatter\OutputFormatter;
+use Symfony\Component\Console\Helper\TableStyle;
 
 /**
  * The base of the artisan commands: the account and holder options, and a clean failure for what Datadis
@@ -33,6 +36,40 @@ abstract class DatadisCommand extends Command
     }
 
     abstract protected function perform(DatadisClient $client): int;
+
+    /*
+     * What the commands print can come from Datadis or from the user (an account name, an answer, a distributor's
+     * name). The console formatter would read `<fg=foo>` in it as a style and fail, or drop `<info>`: it is printed as
+     * it is.
+     */
+
+    public function line($string, $style = null, $verbosity = null)
+    {
+        parent::line(OutputFormatter::escape((string) $string), $style, $verbosity);
+    }
+
+    // Not parent::warn() and parent::error(): they render through components that read the text as markup.
+    public function warn($string, $verbosity = null)
+    {
+        $this->line($string, 'comment', $verbosity);
+    }
+
+    public function error($string, $verbosity = null)
+    {
+        $this->line($string, 'error', $verbosity);
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $headers
+     * @param  array<array-key, mixed>|Arrayable<array-key, mixed>  $rows
+     * @param  array<int, string|TableStyle>  $columnStyles
+     */
+    public function table($headers, $rows, $tableStyle = 'default', array $columnStyles = [])
+    {
+        $escape = static fn (mixed $cell): mixed => is_string($cell) ? OutputFormatter::escape($cell) : $cell;
+
+        parent::table($headers, array_map(static fn (mixed $row): mixed => is_array($row) ? array_map($escape, $row) : $row, (array) $rows), $tableStyle, $columnStyles);
+    }
 
     /**
      * The NIF of the holder the command reads for. None by default: the commands that act for the account itself

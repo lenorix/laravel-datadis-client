@@ -347,3 +347,30 @@ it('takes an empty option as not given', function (string $command, Closure $che
     'empty dates' => ['datadis:authorize 12345678Z --from= --to=', fn () => Http::assertSent(fn (Request $r) => str_contains($r->url(), 'new-authorization') && ! str_contains($r->url(), 'startDate') && ! str_contains($r->url(), 'endDate'))],
     'an empty owner' => ['datadis:authorizations --owner=', fn () => Http::assertSent(fn (Request $r) => str_contains($r->url(), 'list-authorization') && ! str_contains($r->url(), 'ownerNif'))],
 ]);
+
+it('prints text that looks like console formatting as it is, instead of crashing', function (string $command) {
+    fakeForCommands();
+
+    [$code, $output] = runCommand($command);
+
+    expect($code)->toBe(1);
+    expect($output)->toContain('<fg=foo>');
+})->with([
+    'an account name' => ["datadis:supplies --account='<fg=foo>'"],
+]);
+
+it('prints what Datadis says as it is, even when it looks like console formatting', function () {
+    fakeForCommands([
+        '*/get-supplies*' => Http::response(['supplies' => [[
+            'cups' => CUPS, 'distributor' => '<fg=foo>X</>', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
+        ]], 'distributorError' => [['distributorCode' => '2', 'distributorName' => 'X', 'errorCode' => '500', 'errorDescription' => '<fg=foo>down</>']]]),
+        '*/new-authorization*' => Http::response('<fg=foo>created</>', 200, ['Content-Type' => 'text/plain']),
+    ]);
+
+    [$code, $output] = runCommand('datadis:supplies');
+    [$authorizeCode, $authorizeOutput] = runCommand('datadis:authorize 12345678Z');
+
+    expect($code)->toBe(0);
+    expect($output)->toContain('<fg=foo>X</>', '<fg=foo>down</>');
+    expect($authorizeOutput)->toContain('<fg=foo>created</>');
+});
