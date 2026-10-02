@@ -8,6 +8,11 @@ use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\PublicApiClient;
+use Lenorix\LaravelDatadisClient\Commands\AuthorizationsCommand;
+use Lenorix\LaravelDatadisClient\Commands\AuthorizeCommand;
+use Lenorix\LaravelDatadisClient\Commands\CancelAuthorizationCommand;
+use Lenorix\LaravelDatadisClient\Commands\ConsumptionCommand;
+use Lenorix\LaravelDatadisClient\Commands\ContractCommand;
 use Lenorix\LaravelDatadisClient\Commands\SuppliesCommand;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -19,7 +24,14 @@ class LaravelDatadisClientServiceProvider extends PackageServiceProvider
         $package
             ->name('laravel-datadis-client')
             ->hasConfigFile()
-            ->hasCommand(SuppliesCommand::class);
+            ->hasCommands([
+                SuppliesCommand::class,
+                ContractCommand::class,
+                ConsumptionCommand::class,
+                AuthorizationsCommand::class,
+                AuthorizeCommand::class,
+                CancelAuthorizationCommand::class,
+            ]);
     }
 
     public function packageRegistered(): void

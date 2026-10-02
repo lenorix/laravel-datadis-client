@@ -2,13 +2,9 @@
 
 namespace Lenorix\LaravelDatadisClient\Commands;
 
-use Illuminate\Console\Command;
-use InvalidArgumentException;
-use Lenorix\DatadisClient\Exceptions\DatadisException;
-use Lenorix\DatadisClient\Values\Nif;
-use Lenorix\LaravelDatadisClient\LaravelDatadisClient;
+use Lenorix\DatadisClient\DatadisClient;
 
-class SuppliesCommand extends Command
+class SuppliesCommand extends DatadisCommand
 {
     public $signature = 'datadis:supplies
                          {--account= : Account of datadis-client.accounts, the default one if omitted}
@@ -16,24 +12,9 @@ class SuppliesCommand extends Command
 
     public $description = 'List the supply points Datadis shows for an account';
 
-    public function handle(LaravelDatadisClient $datadis): int
+    protected function perform(DatadisClient $client): int
     {
-        $account = $this->option('account');
-        $holder = $this->option('holder');
-
-        try {
-            $client = $datadis->account(is_string($account) && $account !== '' ? $account : null);
-
-            if (is_string($holder) && $holder !== '') {
-                $client = $client->forHolder(Nif::fromString($holder));
-            }
-
-            $result = $client->getSupplies();
-        } catch (DatadisException|InvalidArgumentException $e) {
-            $this->error($e->getMessage());
-
-            return self::FAILURE;
-        }
+        $result = $client->getSupplies();
 
         $this->table(
             ['CUPS', 'Distributor', 'Point type', 'Valid from', 'Valid to', 'Queryable'],
