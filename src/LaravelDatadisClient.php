@@ -28,6 +28,9 @@ use Psr\Http\Client\ClientInterface;
  */
 class LaravelDatadisClient
 {
+    /** The levels the exception handler's logger understands (PSR-3). */
+    public const array REPORT_LEVELS = ['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug'];
+
     /** The account whose credentials `services.datadis` provides. */
     public const string SERVICES_ACCOUNT = 'default';
 
@@ -46,6 +49,7 @@ class LaravelDatadisClient
      */
     public function account(?string $name = null): DatadisClient
     {
+        $this->reportLevel();
         $name ??= $this->defaultAccount();
         $settings = $this->settings($name);
 
@@ -76,10 +80,31 @@ class LaravelDatadisClient
      */
     public function publicApi(?string $name = null): PublicApiClient
     {
+        $this->reportLevel();
         $settings = $this->settings($name ??= $this->defaultAccount())
             ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
 
         return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http($settings), tokenCache: $this->store());
+    }
+
+    /**
+     * The log level of a refused repeated query (`datadis-client.report_level`), or null to leave the handler alone.
+     *
+     * @throws ConfigurationException when it is not one of the PSR-3 levels: the logger would reject it on every report
+     */
+    public function reportLevel(): ?string
+    {
+        $level = $this->config()->get('datadis-client.report_level');
+
+        if ($level === null || $level === '') {
+            return null;
+        }
+
+        if (! is_string($level) || ! in_array($level = strtolower(trim($level)), self::REPORT_LEVELS, true)) {
+            throw new ConfigurationException('datadis-client.report_level must be null or one of '.implode(', ', self::REPORT_LEVELS).'.');
+        }
+
+        return $level;
     }
 
     /**
@@ -142,6 +167,10 @@ class LaravelDatadisClient
         // the test environment keeps Laravel's stack so Http::fake() works.
         if ($stack === null || $stack === '') {
             $stack = $this->app->runningUnitTests() ? 'laravel' : 'guzzle';
+        }
+
+        if ($stack === 'guzzle' && $this->app->runningUnitTests() && ! isset($options['handler'])) {
+            throw new ConfigurationException('datadis-client.http.stack is "guzzle" in the test environment: Http::fake() would not apply and the test would reach Datadis. Leave DATADIS_HTTP_STACK unset in tests, or give datadis-client.http.options.handler a mock handler.');
         }
 
         return match ($stack) {

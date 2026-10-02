@@ -4,6 +4,7 @@ namespace Lenorix\LaravelDatadisClient;
 
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\PublicApiClient;
 use Lenorix\LaravelDatadisClient\Commands\SuppliesCommand;
@@ -30,10 +31,15 @@ class LaravelDatadisClientServiceProvider extends PackageServiceProvider
 
         // A repeated query is refused before anything is sent: expected under a scheduler, not an error.
         // This runs after the application's own `withExceptions()`, so `report_level` => null leaves its setting alone.
+        // It never throws: a bad level is reported by account() and publicApi(), and ignored here.
         $this->callAfterResolving(ExceptionHandler::class, function (ExceptionHandler $handler): void {
-            $level = config('datadis-client.report_level');
+            try {
+                $level = $this->app->make(LaravelDatadisClient::class)->reportLevel();
+            } catch (ConfigurationException) {
+                return;
+            }
 
-            if (is_string($level) && $level !== '' && method_exists($handler, 'level')) {
+            if ($level !== null && method_exists($handler, 'level')) {
                 $handler->level(RepetitionWindowException::class, $level);
             }
         });

@@ -16,7 +16,7 @@ composer require lenorix/laravel-datadis-client
 php artisan vendor:publish --tag="datadis-client-config"
 ```
 
-Requires PHP 8.4 and Laravel 13 (`lenorix/datadis-client` needs Guzzle 8, which Laravel 11 and 12 do not allow yet). Datadis is a third-party service, so its credentials go in `config/services.php`, like any other:
+Requires PHP 8.4 and Laravel 13 (`lenorix/datadis-client` needs Guzzle 8, which Laravel 11 and 12 do not allow). Datadis is a third-party service, so its credentials go in `config/services.php`, like any other:
 
 ```php
 'datadis' => [
@@ -36,7 +36,7 @@ DATADIS_PASSWORD=your-password
 
 **The calls do not go through Laravel's `Http` client unless you ask.** The login request carries your Datadis **password** and its answer carries the **token**; Laravel's request events, global HTTP middleware and recorders (Telescope, Nightwatch, your own logging middleware) would see both. So, unset, `datadis-client.http.stack` is `guzzle`: plain Guzzle with the package's settings, where nothing of Laravel sees the calls.
 
-The test environment (`APP_ENV=testing`) is the exception: it uses `laravel` so that `Http::fake()` works. To fake Datadis in another environment, set `DATADIS_HTTP_STACK=laravel` and keep in mind what the recorders there will see. The token is also kept in your cache store: protect that store like a password. Details in [Logging and request recorders](#logging-and-request-recorders).
+The test environment (`APP_ENV=testing`) is the exception: it uses `laravel` so that `Http::fake()` works. Do not set `DATADIS_HTTP_STACK=guzzle` in a `.env` your tests load (or override it in `phpunit.xml`): the package refuses to build a client on plain Guzzle in tests, because `Http::fake()` would not apply and a test would reach the real Datadis. To fake Datadis in another environment, set `DATADIS_HTTP_STACK=laravel` and keep in mind what the recorders there will see. The token is also kept in your cache store: protect that store like a password. Details in [Logging and request recorders](#logging-and-request-recorders).
 
 ## Usage
 
@@ -121,7 +121,7 @@ The client holds a password and cannot be serialised: resolve it in `handle()`, 
 | `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty, and anything that is not a store name fails. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
 | `http.stack` | `guzzle` (the default, except in the test environment) or `laravel` (`Http::fake()` works, but Laravel's events and recorders see the login password and token): `DATADIS_HTTP_STACK`. |
 | `http.options` | Extra Guzzle options for every call (a proxy, `verify`...), merged over the package's own settings. |
-| `report_level` | Log level of a refused repeat (`RepetitionWindowException`), `warning` by default (`DATADIS_REPORT_LEVEL`). It is set after your own `withExceptions()`, so it wins over a level you set there; use `null` to leave your handler alone. |
+| `report_level` | Log level of a refused repeat (`RepetitionWindowException`), `warning` by default (`DATADIS_REPORT_LEVEL`); one of the PSR-3 levels, anything else fails when the client is built. It is set after your own `withExceptions()`, so it wins over a level you set there; use `null` to leave your handler alone. |
 | `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |
 
 A repeated query fails with `RepetitionWindowException` before anything is sent.
@@ -137,7 +137,7 @@ The package ships [Laravel Boost](https://laravel.com/docs/boost) resources, so 
 
 ## Testing
 
-In the test environment (`APP_ENV=testing`) the calls go through Laravel's `Http` client, so you can fake Datadis. Elsewhere the default stack is plain Guzzle: set `DATADIS_HTTP_STACK=laravel`, or give it your own handler in `datadis-client.http.options.handler`.
+In the test environment (`APP_ENV=testing`) the calls go through Laravel's `Http` client, so you can fake Datadis. Elsewhere the default stack is plain Guzzle: set `DATADIS_HTTP_STACK=laravel`, or give it your own Guzzle handler at runtime with `config()->set('datadis-client.http.options.handler', $handlerStack)` (not in a config file: an object there breaks `config:cache`).
 
 ```php
 Http::preventStrayRequests();   // a URL that stops matching must fail, not reach Datadis

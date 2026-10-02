@@ -491,3 +491,33 @@ it('fails the command cleanly for a holder that is not a valid NIF', function (s
 
     expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-supplies')))->toHaveCount(0);
 })->with(['not a nif' => 'nope', 'wrong control letter' => '12345678A', 'too short' => '1234']);
+
+it('refuses a report level the logger would reject, without breaking error reporting', function (mixed $level) {
+    $file = sys_get_temp_dir().'/datadis-report-'.bin2hex(random_bytes(4)).'.log';
+    config()->set('logging.default', 'single');
+    config()->set('logging.channels.single', ['driver' => 'single', 'path' => $file]);
+    config()->set('datadis-client.report_level', $level);
+    app()->forgetInstance(ExceptionHandler::class);
+
+    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'report_level');
+    expect(fn () => app(Manager::class)->publicApi())->toThrow(ConfigurationException::class, 'report_level');
+
+    // The handler still reports: the bad level is ignored there.
+    app(ExceptionHandler::class)->report(new RepetitionWindowException('repeat'));
+    expect(is_file($file) ? file_get_contents($file) : '')->toContain('repeat');
+    @unlink($file);
+})->with(['typo' => 'warn', 'number' => 3, 'array' => [['warning']]]);
+
+it('takes the report level in any case', function () {
+    config()->set('datadis-client.report_level', ' WARNING ');
+
+    expect(app(Manager::class)->reportLevel())->toBe('warning');
+    expect(app(Manager::class)->account())->toBeInstanceOf(DatadisClient::class);
+});
+
+it('refuses the guzzle stack in the test environment unless the test brought a mock handler', function () {
+    config()->set('datadis-client.http.stack', 'guzzle');
+    config()->set('datadis-client.http.options', []);
+
+    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'would reach Datadis');
+});

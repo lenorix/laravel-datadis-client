@@ -89,7 +89,9 @@ return [
     | sent: expected under a scheduler, so it is reported as a warning. The
     | package sets this on the exception handler after your own
     | `withExceptions()`, so it wins over a level you set there for
-    | RepetitionWindowException; set null to leave your handler alone.
+    | RepetitionWindowException; set null to leave your handler alone. It must be
+    | a PSR-3 level (emergency, alert, critical, error, warning, notice, info,
+    | debug): anything else fails when the client is built.
     |
     */
     'report_level' => env('DATADIS_REPORT_LEVEL', 'warning'),
