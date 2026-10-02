@@ -99,17 +99,20 @@ return [
     | HTTP stack
     |--------------------------------------------------------------------------
     |
-    | `laravel` sends every call through Laravel's Http handler stack, so
-    | Http::fake() and Http::assertSent() work, but Laravel's request events,
-    | global middleware and recorders (Telescope, Nightwatch...) also see the
-    | login request, with the password, and its answer, with the token.
-    | `guzzle` uses plain Guzzle with the package's settings: nothing of
-    | Laravel sees the calls, and Http::fake() does not apply to them. Use
-    | `guzzle` in production if you run such recorders and `laravel` in tests.
+    | `guzzle` sends the calls through plain Guzzle with the package's
+    | settings: nothing of Laravel sees them. `laravel` sends them through
+    | Laravel's Http handler stack, so Http::fake() and Http::assertSent() work,
+    | but Laravel's request events, global middleware and recorders (Telescope,
+    | Nightwatch...) also see the login request, with the password, and its
+    | answer, with the token.
+    |
+    | Unset, it is `guzzle`, except in the test environment (APP_ENV=testing),
+    | where it is `laravel`. Set DATADIS_HTTP_STACK=laravel to fake Datadis in
+    | another environment, knowing what the recorders there will see.
     |
     */
     'http' => [
-        'stack' => env('DATADIS_HTTP_STACK', 'laravel'),
+        'stack' => env('DATADIS_HTTP_STACK'),
 
         // Extra Guzzle options for every call (a proxy, `verify`, a custom `handler`...), on top of the
         // package's own timeouts and settings. With the `laravel` stack its handler is kept.

@@ -26,7 +26,9 @@ $quarters = $client->getConsumptionDataOf($supply, $from, $to, MeasurementType::
 $peaks    = $client->getMaxPowerOf($supply, $from, $to);              // one row per tariff period, kW
 $reactive = $client->getReactiveDataOf($supply, $from, $to);          // API v2 only
 $client->getDistributorsWithSupplies();
-$client->listAuthorization(); $client->newAuthorization($nif); $client->cancelAuthorization($nif);
+$client->listAuthorization();                                         // read only
+// These two CHANGE data on Datadis (access to the supplies): only when the user asks for it.
+$client->newAuthorization($nif); $client->cancelAuthorization($nif);
 $client->getGroups();                                                 // API v2 only
 ```
 

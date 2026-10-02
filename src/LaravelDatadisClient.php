@@ -5,7 +5,7 @@ namespace Lenorix\LaravelDatadisClient;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Config\Repository as Config;
-use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as Http;
 use InvalidArgumentException;
 use Lenorix\DatadisClient\DatadisClient;
@@ -21,7 +21,8 @@ use Psr\Http\Client\ClientInterface;
 /**
  * Builds the DatadisClient of each configured account on the application's HTTP client and cache.
  *
- * Calls it does not know go to the default account, so the facade reads like the client itself.
+ * Calls it does not know go to the default account, so the facade reads like the client itself: that
+ * includes the operations that change data (authorizations, partner users), which the client offers on purpose.
  *
  * @mixin DatadisClient
  */
@@ -34,7 +35,7 @@ class LaravelDatadisClient
      * The collaborators are taken from the container on every call, not kept: a facade holds this
      * object for the whole process, and Http::fake() swaps the HTTP factory after it was built.
      */
-    public function __construct(private readonly Container $app) {}
+    public function __construct(private readonly Application $app) {}
 
     /**
      * A client for an account of `datadis-client.accounts`; the default one when none is named.
@@ -133,7 +134,15 @@ class LaravelDatadisClient
         $options = $this->config()->get('datadis-client.http.options');
         $options = is_array($options) ? $options : [];
 
-        return match ($stack = $this->config()->get('datadis-client.http.stack', 'laravel')) {
+        $stack = $this->config()->get('datadis-client.http.stack');
+
+        // Unset: plain Guzzle, so Laravel's events and recorders never see the login password and the token;
+        // the test environment keeps Laravel's stack so Http::fake() works.
+        if ($stack === null || $stack === '') {
+            $stack = $this->app->runningUnitTests() ? 'laravel' : 'guzzle';
+        }
+
+        return match ($stack) {
             'laravel' => GuzzleClientFactory::create($config, ['handler' => $this->app->make(Http::class)->buildHandlerStack()] + $options),
             // Plain Guzzle: no Laravel events, recorders or global middleware, which would see the login password and the token.
             'guzzle' => GuzzleClientFactory::create($config, $options),
@@ -150,7 +159,12 @@ class LaravelDatadisClient
     {
         $name = $this->config()->get('datadis-client.cache.store');
 
-        return $this->app->make(CacheFactory::class)->store(is_string($name) && $name !== '' ? $name : null);
+        // Anything but a store name must fail: falling back to the default store could leave the 24 hour guard on a store the workers do not share.
+        if ($name !== null && ! is_string($name)) {
+            throw new ConfigurationException('datadis-client.cache.store must be the name of a cache store or null, '.get_debug_type($name).' given.');
+        }
+
+        return $this->app->make(CacheFactory::class)->store($name === '' ? null : $name);
     }
 
     private function ledgerKey(): string

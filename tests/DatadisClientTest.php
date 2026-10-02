@@ -333,3 +333,67 @@ it('never reaches the network on the guzzle stack unless a test queues an answer
 
     expect(fn () => app(DatadisClient::class)->getSupplies())->toThrow(TransportException::class);
 });
+
+it('sends the calls through plain Guzzle unless the test environment asks for Laravel\'s stack', function (string $environment, bool $laravelStack) {
+    config()->set('datadis-client.http.stack', null);
+    app()['env'] = $environment;
+    fakeDatadis();
+
+    if ($laravelStack) {
+        expect(app(DatadisClient::class)->getSupplies()->records)->toHaveCount(1);
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'get-supplies'));
+    } else {
+        // The empty Guzzle mock of the test setup answers nothing, and Http::fake() is not consulted.
+        expect(fn () => app(DatadisClient::class)->getSupplies())->toThrow(TransportException::class);
+        Http::assertNothingSent();
+    }
+})->with([
+    'testing' => ['testing', true],
+    'production' => ['production', false],
+    'local' => ['local', false],
+]);
+
+it('treats an empty stack as unset', function () {
+    config()->set('datadis-client.http.stack', '');
+    app()['env'] = 'production';
+
+    expect(fn () => app(DatadisClient::class)->getSupplies())->toThrow(TransportException::class);
+});
+
+it('refuses a cache store that is not a store name, instead of falling back to the default one', function (mixed $store) {
+    config()->set('datadis-client.cache.store', $store);
+
+    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'must be the name of a cache store or null');
+})->with([
+    'array' => [['redis']],
+    'int' => [1],
+    'false' => [false],
+    'true' => [true],
+]);
+
+it('uses the default cache store when none is named', function (?string $store) {
+    config()->set('datadis-client.cache.store', $store);
+
+    expect(app(Manager::class)->account())->toBeInstanceOf(DatadisClient::class);
+})->with([null, '']);
+
+it('offers the operations that change data through the facade and the injected client', function (Closure $client) {
+    Http::fake([
+        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/new-authorization*' => Http::response('Authorization created', 200, ['Content-Type' => 'text/plain']),
+        '*/cancel-authorization*' => Http::response('Authorization cancelled', 200, ['Content-Type' => 'text/plain']),
+        '*/partner-delete-user*' => Http::response('User unlinked', 200, ['Content-Type' => 'text/plain']),
+    ]);
+    $nif = Nif::fromString('12345678Z');
+
+    expect($client()->newAuthorization($nif, null, null, Cups::fromString(CUPS)))->toBe('Authorization created');
+    expect($client()->cancelAuthorization($nif))->toBe('Authorization cancelled');
+    expect($client()->partnerDeleteUser($nif))->toBe('User unlinked');
+
+    foreach (['new-authorization', 'cancel-authorization', 'partner-delete-user'] as $endpoint) {
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), $endpoint));
+    }
+})->with([
+    'facade (forwarded call)' => [fn () => LaravelDatadisClient::getFacadeRoot()],
+    'injected' => [fn () => app(DatadisClient::class)],
+]);

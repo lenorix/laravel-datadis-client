@@ -9,6 +9,7 @@ All notable changes to `laravel-datadis-client` will be documented in this file.
 - Report `RepetitionWindowException` as a warning through the exception handler.
 - Test the 24 hour guard under real concurrency (several processes on a file cache) and keep the suite off the network.
 - Require 100 % coverage of `src/` in CI (`composer test-coverage`); add `http.options` for extra Guzzle options.
+- Default `http.stack` to plain Guzzle (Laravel's stack only in the test environment), fail on a `cache.store` that is not a store name, and document the operations that change data.
 - Add `http.stack` (`DATADIS_HTTP_STACK`): `guzzle` keeps Laravel's events and recorders from seeing the login password and token.
 - Document the ledger key.
 - Expose `PublicApiClient` (container binding and `publicApi()`), sharing the login with the private client.

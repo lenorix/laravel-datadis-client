@@ -34,15 +34,9 @@ DATADIS_PASSWORD=your-password
 
 ## Security
 
-By default every call goes through Laravel's `Http` client so it can be faked in tests. The price: Laravel's request events, global HTTP middleware and recorders (Telescope, Nightwatch, your own logging middleware) can see the login request, which carries your Datadis **password**, and its answer, which carries the **token** (the token is also kept in your cache store, so protect that store like a password).
+**The calls do not go through Laravel's `Http` client unless you ask.** The login request carries your Datadis **password** and its answer carries the **token**; Laravel's request events, global HTTP middleware and recorders (Telescope, Nightwatch, your own logging middleware) would see both. So, unset, `datadis-client.http.stack` is `guzzle`: plain Guzzle with the package's settings, where nothing of Laravel sees the calls.
 
-In production, send the calls through plain Guzzle, where nothing of Laravel sees them:
-
-```dotenv
-DATADIS_HTTP_STACK=guzzle
-```
-
-Keep `laravel` in the test environment (`Http::fake()` does not apply to the `guzzle` stack). Details in [Logging and request recorders](#logging-and-request-recorders).
+The test environment (`APP_ENV=testing`) is the exception: it uses `laravel` so that `Http::fake()` works. To fake Datadis in another environment, set `DATADIS_HTTP_STACK=laravel` and keep in mind what the recorders there will see. The token is also kept in your cache store: protect that store like a password. Details in [Logging and request recorders](#logging-and-request-recorders).
 
 ## Usage
 
@@ -108,13 +102,11 @@ php artisan datadis:supplies [--account=other] [--holder=00000000T]
 
 ### Logging and request recorders
 
-By default calls go through Laravel's `Http` client, so `Http::fake()` works, but Laravel's request events, global HTTP middleware and recorders such as Telescope or Nightwatch also see the login request (the password) and its answer (the token). If you run such tools, send the calls through plain Guzzle instead:
+With `DATADIS_HTTP_STACK=laravel` (the default only in the test environment), Laravel's request events, global HTTP middleware and recorders such as Telescope or Nightwatch see the login request (the password) and its answer (the token). Outside tests keep the default (`guzzle`), or exclude `datadis.es` from the recorders and from the request bodies they keep. With `guzzle`, `Http::fake()` does not apply to these calls: fake Datadis in tests, where the stack is `laravel`.
 
-```dotenv
-DATADIS_HTTP_STACK=guzzle
-```
+### Operations that change data
 
-Nothing of Laravel sees them then, and `Http::fake()` no longer applies: keep `laravel` in your test environment. Without that switch, exclude `datadis.es` from the recorders or from the request bodies they keep.
+The facade and the injected client are the full client, so they also offer the calls that change data on Datadis: `newAuthorization()` and `cancelAuthorization()` (give or take away a third party's access to your supplies) and `partnerDeleteUser()` (partner accounts). They are never retried, and Datadis documents the first two for API v1; their answers are not verified yet. If your code only reads, type-hint what you use and keep these out of reach, for example behind your own small service class.
 
 ### Queued jobs
 
@@ -126,8 +118,8 @@ The client holds a password and cannot be serialised: resolve it in `handle()`, 
 |---|---|
 | `default` | Account used by the binding, the facade and the command (`DATADIS_ACCOUNT`). |
 | `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`, `check_username_control` (`false` accepts a username whose NIF/NIE/CIF control character does not match). |
-| `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
-| `http.stack` | `laravel` (default, `Http::fake()` works) or `guzzle` (no Laravel events or recorders see the login password and token): `DATADIS_HTTP_STACK`. |
+| `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty, and anything that is not a store name fails. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
+| `http.stack` | `guzzle` (the default, except in the test environment) or `laravel` (`Http::fake()` works, but Laravel's events and recorders see the login password and token): `DATADIS_HTTP_STACK`. |
 | `http.options` | Extra Guzzle options for every call (a proxy, `verify`...), merged over the package's own settings. |
 | `report_level` | Log level of a refused repeat (`RepetitionWindowException`), `warning` by default (`DATADIS_REPORT_LEVEL`). It is set after your own `withExceptions()`, so it wins over a level you set there; use `null` to leave your handler alone. |
 | `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |

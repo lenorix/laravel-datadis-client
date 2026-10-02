@@ -28,6 +28,8 @@ class TestCase extends Orchestra
     public function getEnvironmentSetUp($app)
     {
         config()->set('cache.default', 'array');
+        // Explicit, although the testing environment already means it: Http::fake() needs Laravel's stack.
+        config()->set('datadis-client.http.stack', 'laravel');
         // The guzzle stack must never reach the network from a test: an empty mock fails any call a test did not queue.
         config()->set('datadis-client.http.options.handler', HandlerStack::create(new MockHandler));
         config()->set('app.key', 'base64:'.base64_encode(str_repeat('k', 32)));

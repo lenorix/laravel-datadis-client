@@ -37,7 +37,7 @@ Http::fake([
 - Data endpoints (API v2 adds a `-v2` suffix: `get-supplies-v2`, `get-consumption-data-v2`) answer `{ "<list key>": [...], "distributorError": [] }`; list keys are `supplies`, `timeCurve`, `maxPower`, ... Use a wildcard (`*`) after the endpoint name for the query string.
 - Use a CUPS the client accepts (`ES` + 16 digits + 2 letters, optional `0F`-style suffix) and a `distributorCode`/`pointType` so `isQueryable()` is true.
 
-`Http::fake()` only applies with `datadis-client.http.stack` = `laravel` (the default). Production setups that choose `guzzle` to keep Telescope-style recorders away from the login must keep `laravel` in the test environment.
+`Http::fake()` only applies with `datadis-client.http.stack` = `laravel`, which is the default only in the test environment (`APP_ENV=testing`); set it explicitly in the test setup, as the package's own `TestCase` does. Outside testing the default is `guzzle`, so Telescope-style recorders never see the login password and the token.
 
 ## What to test
 
