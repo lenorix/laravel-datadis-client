@@ -40,7 +40,7 @@ $client->getSupplies(); $client->getDistributorsWithSupplies(); $client->getGrou
 $client->listAuthorization();                                         // read only
 ```
 
-`getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()` are for a job that runs every day: the range alternates between the current month and the previous plus the current month, so today's query is never yesterday's. Run it once a day; it throws `InvalidRequestException` when the contract has nothing to refresh this month. Reactive energy has no such method: ask it for closed months.
+`getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()` are for a job that runs every day: the range alternates between the current month and the previous plus the current month, so today's query is never yesterday's. Run it once a day. In the month the contract starts the range is that month every day (there is no previous month to alternate with), so a run within 24 hours and 10 minutes of the day before throws `RepetitionWindowException`: catch it. It throws `InvalidRequestException` when the contract has nothing to refresh this month. Reactive energy has no such method: ask it for closed months.
 
 The consumption and maximum power calls are subject to the 24 hour rule, which the Datadis manual documents (sections 4.3 and 4.4). The client applies it to the reactive call too, to be safe. The others are free to repeat.
 

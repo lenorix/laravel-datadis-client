@@ -174,7 +174,7 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 
 - **Use `redis` or `database` as your cache** (`CACHE_STORE`). The package keeps the token and the guard in Laravel's default cache and has no cache setting of its own. Redis, Memcached and the database are shared by every worker and server; `file` only coordinates processes on one server, and `array` lives in one process, so with it the guard cannot stop another worker. The `null` driver remembers nothing and is refused.
 - **Set `DATADIS_LEDGER_KEY` if you rotate `APP_KEY`.** Without it the secret is derived from `APP_KEY`, and rotating the key makes the guard forget the last 24 hours.
-- **Refresh the current month with `getLatestConsumptionDataOf()`** (and `getLatestMaxPowerOf()`) in a daily job. The guard keeps a query for 24 hours and 10 minutes, so asking the same range at the same time the next day is refused; these methods alternate the range from one day to the next, so nothing repeats. One run a day.
+- **Refresh the current month with `getLatestConsumptionDataOf()`** (and `getLatestMaxPowerOf()`) in a daily job. The guard keeps a query for 24 hours and 10 minutes, so asking the same range at the same time the next day is refused; these methods alternate the range from one day to the next, so nothing repeats (one exception, below). One run a day.
 - **Never loop over a data query**, and never add a retry of your own around one.
 
 ### Refresh the current month every day
@@ -188,7 +188,9 @@ $consumption = $client->getLatestConsumptionDataOf($supply);   // the current mo
 $maxPower = $client->getLatestMaxPowerOf($supply);
 ```
 
-The current month is always in the range, so it is fresh every day; the previous month is refreshed every second day. Run it once a day. Reactive energy has no such method (it shares its guard entry with maximum power): ask it for closed months. The `datadis-sync` Boost skill has a complete job.
+The current month is always in the range, and the previous month is added every second day. Run it once a day.
+
+One exception, which comes from the client: **in the month the contract starts, the range is that month every day**, because there is no previous month to alternate with. A run within 24 hours and 10 minutes of the day before asks the same query and is refused (`RepetitionWindowException`), so that month is refreshed every second day, not every day. Catch the exception, as the job in the skill does. From the next month the range alternates again. Reactive energy has no such method (it shares its guard entry with maximum power): ask it for closed months. The `datadis-sync` Boost skill has a complete job.
 
 ### Moving from your own record of queries
 
