@@ -5,6 +5,7 @@ namespace Lenorix\LaravelDatadisClient;
 use Closure;
 use DateTimeImmutable;
 use DateTimeInterface;
+use Illuminate\Cache\NullStore;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -390,7 +391,7 @@ class LaravelDatadisClient
     {
         $default = $this->config()->get('datadis-client.default', 'default');
 
-        return is_string($default) && $default !== '' ? $default : 'default';
+        return is_string($default) && trim($default) !== '' ? trim($default) : 'default';
     }
 
     /**
@@ -407,6 +408,11 @@ class LaravelDatadisClient
         $options = $this->config()->get('datadis-client.http.options');
         // Guzzle's options are named: drop any numeric key.
         $options = is_array($options) ? array_filter($options, is_string(...), ARRAY_FILTER_USE_KEY) : [];
+
+        // Guzzle's `debug` prints each request, with the login's password, to the output.
+        if (! empty($options['debug'])) {
+            throw new ConfigurationException('datadis-client.http.options.debug would print the login request, with the password, to the output.');
+        }
 
         $stack = $this->config()->get('datadis-client.http.stack');
         $stack = is_string($stack) ? strtolower(trim($stack)) : $stack;
@@ -494,6 +500,11 @@ class LaravelDatadisClient
         }
 
         $repository = $this->app->make(CacheFactory::class)->store($name === '' ? null : $name);
+
+        // A store that remembers nothing would refuse every guarded query, the first one included, as already sent.
+        if ($repository instanceof CacheRepository && $repository->getStore() instanceof NullStore) {
+            throw new ConfigurationException('datadis-client.cache.store is a store that remembers nothing (the null driver): the 24 hour guard and the login token need a real one.');
+        }
 
         // The same store without the event dispatcher: Laravel's cache events (and Telescope's cache watcher)
         // carry the keys and the values, and the token is one of them.

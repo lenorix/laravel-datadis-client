@@ -251,11 +251,11 @@ All keys are in `config/datadis-client.php`.
 |---|---|---|
 | `default` | Account used by the container, the facade and the commands (`DATADIS_ACCOUNT`). | `default` |
 | `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`, `DATADIS_API_VERSION`), `timezone` (`DATADIS_TIMEZONE`), `timeout` (`DATADIS_TIMEOUT`), `connect_timeout` (`DATADIS_CONNECT_TIMEOUT`), `base_url`, `user_agent`, `check_username_control`. The account named `default` takes its credentials from `services.datadis`. | `v2`, `Europe/Madrid`, 120 s, 10 s |
-| `cache.store` | Cache store for the token and the 24 hour guard (`DATADIS_CACHE_STORE`). A value that is not a text fails, and so does a name that is not a defined store. | default store |
+| `cache.store` | Cache store for the token and the 24 hour guard (`DATADIS_CACHE_STORE`). A value that is not a text fails, and so does a name that is not a defined store or a store of the `null` driver, which remembers nothing. | default store |
 | `ledger.key` | Secret of at least 16 bytes for the guard (`DATADIS_LEDGER_KEY`). | from `APP_KEY` |
 | `http.stack` | `guzzle` or `laravel` (`DATADIS_HTTP_STACK`). `laravel` lets Laravel's events and recorders see the password and the token. | `guzzle`; `laravel` in tests |
 | `http.retries` | `max` (0 to 10, `DATADIS_HTTP_RETRIES`), `base_delay_ms`, `max_delay_ms`. | 2, 1000, 30000 |
-| `http.options` | Extra Guzzle options for every call: a proxy, `verify`... | none |
+| `http.options` | Extra Guzzle options for every call: a proxy, `verify`... They replace the package's own `timeout` and `connect_timeout`. `debug` is refused, because it would print the login password. | none |
 | `report_level` | PSR-3 log level of a refused repeat (`DATADIS_REPORT_LEVEL`), or `null` to leave your exception handler alone. | `warning` |
 
 ## Laravel Boost

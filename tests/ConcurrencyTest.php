@@ -98,13 +98,29 @@ it('lets exactly one of several simultaneous processes send a query, on a file c
 
         touch($barrier);   // release them together
 
-        $answers = array_map(function (array $entry) {
+        // A worker that hangs must fail the test, not freeze the build: wait at most 30 seconds in all, then stop it.
+        $deadline = microtime(true) + 30;
+        $answers = array_map(function (array $entry) use ($deadline) {
             [$process, $pipes] = $entry;
-            $out = stream_get_contents($pipes[1]);
-            stream_get_contents($pipes[2]);
+            stream_set_blocking($pipes[1], false);
+            stream_set_blocking($pipes[2], false);
+            $out = '';
+
+            while (proc_get_status($process)['running'] && microtime(true) < $deadline) {
+                $out .= (string) stream_get_contents($pipes[1]);
+                usleep(2000);
+            }
+
+            $hung = proc_get_status($process)['running'];
+            $out .= (string) stream_get_contents($pipes[1]);
+
+            if ($hung) {
+                proc_terminate($process);
+            }
+
             proc_close($process);
 
-            return $out;
+            return $hung ? 'hung' : $out;
         }, $processes);
 
         (new Filesystem)->deleteDirectory($directory);

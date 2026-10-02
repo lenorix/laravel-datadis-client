@@ -57,7 +57,8 @@ return [
     | memcached, database and dynamodb work from any host; `file` locks the
     | file, so it only coordinates processes on the same host and filesystem
     | (not several servers); `array` lives in one process, so it protects
-    | nothing across workers or runs. Null uses the default store. Protect it
+    | nothing across workers or runs, and the `null` driver refuses everything.
+    | Null uses the default store. Protect it
     | like a password: it holds the Datadis token.
     |
     */
@@ -120,7 +121,8 @@ return [
         'stack' => env('DATADIS_HTTP_STACK'),
 
         // Extra Guzzle options for every call (a proxy, `verify`, a custom `handler`...), on top of the
-        // package's own timeouts and settings. With the `laravel` stack its handler is kept.
+        // package's own timeouts and settings, which they replace (`timeout`, `connect_timeout`...). With the
+        // `laravel` stack its handler is kept. `debug` is refused: it would print the login password.
         'options' => [],
 
         // Network failures and 502, 503 and 504 answers are retried with exponential backoff, only for the

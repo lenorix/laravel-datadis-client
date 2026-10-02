@@ -674,3 +674,34 @@ it('has no report level to set when it is null or empty', function (mixed $level
 
     expect(app(Manager::class)->reportLevel())->toBeNull();
 })->with([null, '']);
+
+it('refuses a cache store that remembers nothing, instead of refusing every query as already sent', function () {
+    config()->set('cache.stores.nothing', ['driver' => 'null']);
+    config()->set('datadis-client.cache.store', 'nothing');
+
+    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'remembers nothing');
+});
+
+it('refuses the Guzzle debug option, which would print the login password', function (mixed $debug, bool $refused) {
+    config()->set('datadis-client.http.options.debug', $debug);
+
+    if ($refused) {
+        expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'would print the login request');
+    } else {
+        expect(app(Manager::class)->account())->toBeInstanceOf(DatadisClient::class);
+    }
+})->with([
+    'true' => [true, true],
+    'a stream' => [STDERR, true],
+    'false' => [false, false],
+]);
+
+it('trims the default account name', function () {
+    config()->set('datadis-client.accounts.work', ['username' => '12345678Z', 'password' => 'x']);
+    config()->set('datadis-client.default', ' work ');
+    fakeDatadis();
+
+    app(DatadisClient::class)->getSupplies();
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), 'login') && $r['username'] === '12345678Z');
+});
