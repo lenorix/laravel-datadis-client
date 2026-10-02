@@ -701,3 +701,16 @@ it('resolves an account whose name has a dot, and a name that only looks like a 
     // `default.username` is a path into the default account, not an account.
     expect(fn () => app(Manager::class)->account('default.username'))->toThrow(InvalidArgumentException::class);
 });
+
+it('reaches an account with a dot in its name from the public API and the commands too', function () {
+    config()->set('datadis-client.accounts', [
+        'default' => ['username' => '00000000T', 'password' => 'x'],
+        'tenant.east' => ['username' => '12345678Z', 'password' => 'y'],
+    ]);
+    fakeEverything();
+
+    expect(app(Manager::class)->publicApi('tenant.east'))->toBeInstanceOf(PublicApiClient::class);
+
+    $this->artisan('datadis:supplies --account=tenant.east')->assertExitCode(0);
+    expect(array_column(logins(), 'username'))->toBe(['12345678Z']);
+});
