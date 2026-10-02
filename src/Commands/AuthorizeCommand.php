@@ -3,7 +3,6 @@
 namespace Lenorix\LaravelDatadisClient\Commands;
 
 use Lenorix\DatadisClient\DatadisClient;
-use Lenorix\DatadisClient\Values\Nif;
 
 class AuthorizeCommand extends DatadisCommand
 {
@@ -20,7 +19,7 @@ class AuthorizeCommand extends DatadisCommand
     protected function perform(DatadisClient $client): int
     {
         $answer = $client->newAuthorization(
-            Nif::fromString((string) $this->argument('nif')),
+            $this->nif($this->argument('nif')),
             $this->date($this->option('from'), 'from'),
             $this->date($this->option('to'), 'to'),
             ...$this->cupsList($this->option('cups')),

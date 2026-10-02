@@ -3,7 +3,6 @@
 namespace Lenorix\LaravelDatadisClient\Commands;
 
 use Lenorix\DatadisClient\DatadisClient;
-use Lenorix\DatadisClient\Values\Nif;
 
 class CancelAuthorizationCommand extends DatadisCommand
 {
@@ -17,7 +16,7 @@ class CancelAuthorizationCommand extends DatadisCommand
 
     protected function perform(DatadisClient $client): int
     {
-        $this->line($client->cancelAuthorization(Nif::fromString((string) $this->argument('nif')), ...$this->cupsList($this->option('cups'))));
+        $this->line($client->cancelAuthorization($this->nif($this->argument('nif')), ...$this->cupsList($this->option('cups'))));
 
         return self::SUCCESS;
     }

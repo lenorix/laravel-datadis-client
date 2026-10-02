@@ -59,6 +59,14 @@ abstract class DatadisCommand extends Command
     }
 
     /**
+     * @throws InvalidArgumentException when it is not a valid NIF, NIE or CIF
+     */
+    protected function nif(mixed $value): Nif
+    {
+        return Nif::fromString(is_string($value) ? $value : '');
+    }
+
+    /**
      * @throws InvalidArgumentException when it is not YYYY-MM or YYYY/MM
      */
     protected function month(mixed $value): Month
