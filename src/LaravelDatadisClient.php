@@ -144,7 +144,9 @@ class LaravelDatadisClient
 
     private function defaultAccount(): string
     {
-        return (string) $this->config()->get('datadis-client.default', 'default');
+        $default = $this->config()->get('datadis-client.default', 'default');
+
+        return is_string($default) && $default !== '' ? $default : 'default';
     }
 
     /**
@@ -159,7 +161,8 @@ class LaravelDatadisClient
         $config = DatadisConfig::fromArray($settings);
 
         $options = $this->config()->get('datadis-client.http.options');
-        $options = is_array($options) ? $options : [];
+        // Guzzle's options are named: drop any numeric key.
+        $options = is_array($options) ? array_filter($options, is_string(...), ARRAY_FILTER_USE_KEY) : [];
 
         $stack = $this->config()->get('datadis-client.http.stack');
 

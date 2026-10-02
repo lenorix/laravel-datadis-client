@@ -3,6 +3,7 @@
 namespace Lenorix\LaravelDatadisClient;
 
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Contracts\Foundation\Application;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
@@ -26,8 +27,8 @@ class LaravelDatadisClientServiceProvider extends PackageServiceProvider
         $this->app->bind(LaravelDatadisClient::class);
 
         // bind, not singleton: the client is built where it is used, after any Http::fake() in a test.
-        $this->app->bind(DatadisClient::class, fn ($app) => $app->make(LaravelDatadisClient::class)->account());
-        $this->app->bind(PublicApiClient::class, fn ($app) => $app->make(LaravelDatadisClient::class)->publicApi());
+        $this->app->bind(DatadisClient::class, fn (Application $app) => $app->make(LaravelDatadisClient::class)->account());
+        $this->app->bind(PublicApiClient::class, fn (Application $app) => $app->make(LaravelDatadisClient::class)->publicApi());
 
         // A repeated query is refused before anything is sent: expected under a scheduler, not an error.
         // This runs after the application's own `withExceptions()`, so `report_level` => null leaves its setting alone.

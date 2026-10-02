@@ -54,8 +54,14 @@
         "phpstan": "vendor/bin/phpstan analyse",
         "analyse": "@phpstan",
         "test": "vendor/bin/pest",
-        "test-pbt": "DATADIS_PBT_ITERATIONS=2000 vendor/bin/pest tests/Property",
-        "test-coverage": "XDEBUG_MODE=coverage vendor/bin/pest --coverage --min=100",
+        "test-pbt": [
+            "@putenv DATADIS_PBT_ITERATIONS=2000",
+            "vendor/bin/pest tests/Property"
+        ],
+        "test-coverage": [
+            "@putenv XDEBUG_MODE=coverage",
+            "vendor/bin/pest --coverage --min=100"
+        ],
         "pint": "vendor/bin/pint",
         "format": "@pint",
         "lint": "vendor/bin/pint --test"
