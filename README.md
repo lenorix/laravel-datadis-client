@@ -262,7 +262,7 @@ All keys are in `config/datadis-client.php`.
 
 The package ships [Laravel Boost](https://laravel.com/docs/boost) resources, so your coding agent learns how to call Datadis, which calls count against the 24 hour rule, how to write sync jobs and how to test them.
 
-Run `php artisan boost:install` (or `boost:update --discover` later) and, when Boost asks which of your packages to include, pick `lenorix/laravel-datadis-client`. Boost does not choose third-party packages by itself when it runs without interaction (CI, scripts): there, list the package under `packages` and its four skills under `skills` in `boost.json` (`datadis-development`, `datadis-electricity-domain`, `datadis-sync`, `datadis-testing`) and run `php artisan boost:update`. The guideline lands in `CLAUDE.md` and `AGENTS.md`, and the skills in `.claude/skills` and `.agents/skills`.
+Run `php artisan boost:install` and, when Boost asks which third-party guidelines and skills to install, pick `lenorix/laravel-datadis-client`. Without interaction (CI, scripts) Boost only installs what `boost.json` lists: add `"packages": ["lenorix/laravel-datadis-client"]` to it and run `php artisan boost:update`; its four skills (`datadis-development`, `datadis-electricity-domain`, `datadis-sync`, `datadis-testing`) come with the package. The guideline lands in `CLAUDE.md` and `AGENTS.md`, and the skills in `.claude/skills` and `.agents/skills`.
 
 - **Guideline** (always loaded): conventions and the rules not to break.
 - **`datadis-development`**: calls, results and errors.
