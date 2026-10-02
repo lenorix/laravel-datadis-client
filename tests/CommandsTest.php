@@ -444,10 +444,24 @@ it('reads the contract of a supply listed without a point type, which only consu
     ]);
 
     [$contract] = runCommand('datadis:contract '.CUPS);
-    [$consumption] = runCommand('datadis:consumption '.CUPS.' '.monthsAgo(2)->format());
+    [$consumption, $consumptionOutput] = runCommand('datadis:consumption '.CUPS.' '.monthsAgo(2)->format());
 
     expect($contract)->toBe(0);
     expect($consumption)->toBe(1);
+    expect($consumptionOutput)->toContain('cannot see that supply');   // refused by the command, before the client builds anything
     expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-contract-detail')))->toHaveCount(1);
     expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-consumption-data')))->toHaveCount(0);
 });
+
+it('says nothing is published only when the answer is empty and no distributor failed', function (array $answer, bool $warns, int $exit) {
+    fakeForCommands(['*/get-consumption-data*' => Http::response($answer)]);
+
+    [$code, $output] = runCommand('datadis:consumption '.CUPS.' '.monthsAgo(2)->format());
+
+    expect($code)->toBe($exit);
+    expect(str_contains($output, 'Nothing published for that period yet.'))->toBe($warns);
+})->with([
+    'data' => [['timeCurve' => [['cups' => CUPS, 'date' => '2026/07/01', 'time' => '01:00', 'consumptionKWh' => 0.5, 'obtainMethod' => 'R']], 'distributorError' => []], false, 0],
+    'nothing yet' => [['timeCurve' => [], 'distributorError' => []], true, 0],
+    'a distributor failed' => [['timeCurve' => [], 'distributorError' => [['distributorCode' => '2', 'distributorName' => 'X', 'errorCode' => '500', 'errorDescription' => 'down']]], false, 1],
+]);
