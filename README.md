@@ -161,6 +161,11 @@ php artisan datadis:authorization:cancel 12345678Z
 
 All of them take `--account=second` and `--holder=12345678Z`. A malformed NIF, CUPS, month or date, and a month range Datadis does not serve, fail with a message and send nothing.
 
+The exit code tells a script what happened:
+
+- **0**: it worked, including an empty answer (nothing published yet) and a distributor error beside real data, which only prints a warning.
+- **1**: a wrong input, a Datadis error, or a distributor that failed so that no data came back.
+
 ## What to know before production
 
 ### The 24 hour rule

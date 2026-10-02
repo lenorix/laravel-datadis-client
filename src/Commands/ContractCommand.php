@@ -29,10 +29,6 @@ class ContractCommand extends DatadisCommand
             ], $result->records),
         );
 
-        foreach ($result->distributorErrors as $error) {
-            $this->warn((string) $error->errorDescription);
-        }
-
-        return self::SUCCESS;
+        return $this->finish($result);
     }
 }

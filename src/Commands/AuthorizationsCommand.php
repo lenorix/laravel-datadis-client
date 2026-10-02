@@ -28,6 +28,6 @@ class AuthorizationsCommand extends DatadisCommand
             ], $result->records),
         );
 
-        return self::SUCCESS;
+        return $this->finish($result);
     }
 }

@@ -6,6 +6,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
+use Lenorix\DatadisClient\Data\ApiResult;
 use Lenorix\DatadisClient\Data\Supply;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\DatadisException;
@@ -32,6 +33,32 @@ abstract class DatadisCommand extends Command
     }
 
     abstract protected function perform(DatadisClient $client): int;
+
+    /**
+     * Prints what the distributors reported and gives the exit code of a read.
+     *
+     * A run that got no data because a distributor failed is a failure: a script that looks only at the exit
+     * code must not take it for a success. A distributor error beside real data is a warning, and the exit code
+     * stays 0. An empty answer without errors (nothing published yet) is not a failure either.
+     *
+     * @template T
+     *
+     * @param  ApiResult<T>  $result
+     */
+    protected function finish(ApiResult $result): int
+    {
+        foreach ($result->distributorErrors as $error) {
+            $this->warn((string) $error->errorDescription);
+        }
+
+        if ($result->isEmptyBecauseOfErrors()) {
+            $this->error('A distributor failed and no data came back.');
+
+            return self::FAILURE;
+        }
+
+        return self::SUCCESS;
+    }
 
     private function client(LaravelDatadisClient $datadis): DatadisClient
     {

@@ -43,14 +43,10 @@ class ConsumptionCommand extends DatadisCommand
             array_map(fn ($reading) => [$reading->date, $reading->time, $reading->consumptionKWh, $reading->obtainMethod], $result->records),
         );
 
-        if ($result->isEmpty()) {
-            $this->warn($result->isEmptyBecauseOfErrors() ? 'A distributor failed: nothing came back.' : 'Nothing published for that period yet.');
+        if ($result->isEmpty() && ! $result->isEmptyBecauseOfErrors()) {
+            $this->warn('Nothing published for that period yet.');
         }
 
-        foreach ($result->distributorErrors as $error) {
-            $this->warn((string) $error->errorDescription);
-        }
-
-        return self::SUCCESS;
+        return $this->finish($result);
     }
 }

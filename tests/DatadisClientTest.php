@@ -301,20 +301,6 @@ it('refuses an unknown http stack', function () {
     expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'must be "laravel" or "guzzle"');
 });
 
-it('warns about a distributor that failed while listing supplies', function () {
-    fakeDatadis();
-    Http::swap(new Factory);
-    Http::preventStrayRequests();
-    Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
-        '*/api-private/api/get-supplies*' => Http::response(['supplies' => [], 'distributorError' => [
-            ['distributorCode' => '2', 'distributorName' => 'X', 'errorCode' => '500', 'errorDescription' => 'distributor is down'],
-        ]]),
-    ]);
-
-    $this->artisan('datadis:supplies')->expectsOutputToContain('distributor is down')->assertSuccessful();
-});
-
 it('completes a whole flow on the guzzle stack, decoding the answers, without touching Laravel\'s Http', function () {
     $mock = new MockHandler([
         new Response(200, ['Content-Type' => 'text/plain'], fakeToken()),

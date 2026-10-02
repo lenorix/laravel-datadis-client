@@ -49,15 +49,6 @@ it('shows the contract of a supply with its access tariff', function () {
     expect($output)->toContain('T20TD', '3.45 / 3.45', 'open');
 });
 
-it('warns about a distributor that failed while reading the contract', function () {
-    fakeForCommands(['*/get-contract-detail*' => Http::response(['contract' => [], 'distributorError' => [DISTRIBUTOR_DOWN]])]);
-
-    [$code, $output] = runCommand('datadis:contract '.CUPS);
-
-    expect($code)->toBe(0);
-    expect($output)->toContain('distributor is down');
-});
-
 it('refuses a supply the account cannot see, before asking for data', function (string $command) {
     fakeForCommands(['*/get-supplies*' => Http::response(['supplies' => [], 'distributorError' => []])]);
 
@@ -92,17 +83,57 @@ it('accepts months as YYYY-MM, a last month and quarter-hourly readings', functi
         && str_contains($r->url(), 'measurementType=1'));
 });
 
-it('says why a consumption answer is empty', function (array $answer, string $message) {
-    fakeForCommands(['*/get-consumption-data*' => Http::response($answer)]);
+it('says that nothing is published yet, which is not a failure', function () {
+    fakeForCommands(['*/get-consumption-data*' => Http::response(['timeCurve' => [], 'distributorError' => []])]);
 
     [$code, $output] = runCommand('datadis:consumption '.CUPS.' '.monthsAgo()->format());
 
     expect($code)->toBe(0);
-    expect($output)->toContain($message);
-})->with([
-    'not published' => [['timeCurve' => [], 'distributorError' => []], 'Nothing published'],
-    'a distributor failed' => [['timeCurve' => [], 'distributorError' => [DISTRIBUTOR_DOWN]], 'A distributor failed'],
-]);
+    expect($output)->toContain('Nothing published');
+});
+
+/** The read commands, with the endpoint they read and the key and a row of its answer. */
+function readCommands(): array
+{
+    return [
+        'supplies' => ['datadis:supplies', '*/get-supplies*', 'supplies', ['cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '']],
+        'contract' => ['datadis:contract '.CUPS, '*/get-contract-detail*', 'contract', ['cups' => CUPS, 'accessFare' => 'BAJA TENSION y POTENCIA <= 15 kW', 'contractedPowerkW' => [3.45, 3.45], 'startDate' => '2020/01/01', 'endDate' => '']],
+        'consumption' => ['datadis:consumption '.CUPS.' '.monthsAgo()->format(), '*/get-consumption-data*', 'timeCurve', ['cups' => CUPS, 'date' => '2026/07/01', 'time' => '01:00', 'consumptionKWh' => 1, 'obtainMethod' => 'Real']],
+        'authorizations' => ['datadis:authorizations', '*/list-authorization*', 'authorizations', ['id' => '1', 'ownerDocument' => '00000000T', 'requesterDocument' => '12345678Z', 'cups' => CUPS, 'status' => 'ACTIVE']],
+    ];
+}
+
+it('fails when a distributor failed and no data came back, so a script can tell', function (string $name) {
+    [$command, $endpoint, $key] = readCommands()[$name];
+    fakeForCommands([$endpoint => Http::response([$key => [], 'distributorError' => [DISTRIBUTOR_DOWN]])]);
+
+    [$code, $output] = runCommand($command);
+
+    expect($code)->toBe(1);
+    expect($output)->toContain('distributor is down', 'A distributor failed and no data came back');
+})->with(array_keys(readCommands()));
+
+it('only warns when a distributor failed beside real data', function (string $name) {
+    [$command, $endpoint, $key, $row] = readCommands()[$name];
+    fakeForCommands([$endpoint => Http::response([$key => [$row], 'distributorError' => [DISTRIBUTOR_DOWN]])]);
+
+    [$code, $output] = runCommand($command);
+
+    expect($code)->toBe(0);
+    expect($output)->toContain('distributor is down');
+    expect($output)->not->toContain('no data came back');
+})->with(array_keys(readCommands()));
+
+it('succeeds without a word when there is no data and no distributor failed', function (string $name) {
+    [$command, $endpoint, $key] = readCommands()[$name];
+    fakeForCommands([$endpoint => Http::response([$key => [], 'distributorError' => []])]);
+
+    [$code, $output] = runCommand($command);
+
+    // An empty supplies list or contract is an answer; the command has nothing to complain about.
+    expect($code)->toBe(0);
+    expect($output)->not->toContain('distributor');
+})->with(array_keys(readCommands()));
 
 it('lists the distributor errors beside the readings', function () {
     fakeForCommands(['*/get-consumption-data*' => Http::response(['timeCurve' => [[
