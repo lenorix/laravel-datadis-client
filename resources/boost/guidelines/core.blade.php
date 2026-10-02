@@ -34,7 +34,7 @@ public function handle(DatadisClient $client): void
 </code-snippet>
 @endverbatim
 
-- Artisan: `datadis:supplies`, `datadis:contract`, `datadis:consumption` (counts for the 24 hour rule), `datadis:authorizations`, `datadis:authorize`, `datadis:authorization:cancel`. All take `--account` and `--holder`.
+- Artisan: `datadis:supplies`, `datadis:contract`, `datadis:consumption` (counts for the 24 hour rule), `datadis:authorizations`, `datadis:authorize`, `datadis:authorization:cancel`. All take `--account`; the reading ones also take `--holder`, and the authorization ones act for the account itself.
 
 ### Configuration
 
