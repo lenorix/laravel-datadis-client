@@ -2,6 +2,7 @@
 
 namespace Lenorix\LaravelDatadisClient;
 
+use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Config\Repository as Config;
@@ -238,7 +239,11 @@ class LaravelDatadisClient
             throw new ConfigurationException('datadis-client.cache.store must be the name of a cache store or null, '.get_debug_type($name).' given.');
         }
 
-        return $this->app->make(CacheFactory::class)->store($name === '' ? null : $name);
+        $repository = $this->app->make(CacheFactory::class)->store($name === '' ? null : $name);
+
+        // The same store without the event dispatcher: Laravel's cache events (and Telescope's cache watcher)
+        // carry the keys and the values, and the token is one of them.
+        return $repository instanceof CacheRepository ? new CacheRepository($repository->getStore()) : $repository;
     }
 
     private function ledgerKey(): string

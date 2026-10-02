@@ -5,11 +5,13 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Cache\ArrayStore;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
 use Lenorix\DatadisClient\DatadisClient;
@@ -618,4 +620,30 @@ it('passes extra Guzzle options to every call on the laravel stack', function ()
     app(DatadisClient::class)->getSupplies();
 
     Http::assertSent(fn (Request $r) => str_contains($r->url(), 'get-supplies') && $r->hasHeader('X-Trace', 'abc'));
+});
+
+it('never lets the token or its key reach Laravel\'s cache events', function () {
+    $token = fakeToken();
+    $events = [];
+    Event::listen('Illuminate\Cache\Events\*', function (string $name, array $payload) use (&$events) {
+        $events[] = [$name, json_encode(array_map(fn ($event) => get_object_vars($event), $payload), JSON_PARTIAL_OUTPUT_ON_ERROR)];
+    });
+    Http::fake([
+        '*/nikola-auth/tokens/login' => Http::response($token, 200, ['Content-Type' => 'text/plain']),
+        '*/get-supplies*' => Http::response(['supplies' => [], 'distributorError' => []]),
+    ]);
+
+    app(DatadisClient::class)->getSupplies();   // writes the token
+    app(DatadisClient::class)->getSupplies();   // reads it back
+
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'login')))->toHaveCount(1);   // the token was cached and reused
+    expect($events)->toBe([]);
+});
+
+it('takes a cache repository that is not Laravel\'s as it is', function () {
+    $factory = Mockery::mock(Illuminate\Contracts\Cache\Factory::class);
+    $factory->shouldReceive('store')->andReturn(Mockery::mock(Repository::class));
+    app()->instance(Illuminate\Contracts\Cache\Factory::class, $factory);
+
+    expect(app(Manager::class)->account())->toBeInstanceOf(DatadisClient::class);
 });

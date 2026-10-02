@@ -9,7 +9,7 @@ It wraps [`lenorix/datadis-client`](https://github.com/lenorix/datadis-php-clien
 
 - **Inject it or use the facade.** One or several Datadis accounts, and supplies of third parties who authorized you.
 - **The 24 hour rule is handled.** Datadis refuses the same data query for 24 hours. The package remembers every query in your cache, so no worker or job repeats one.
-- **Safe by default.** Your Datadis password and token do not pass through Laravel's HTTP events, Telescope or Nightwatch.
+- **Safe by default.** Your Datadis password and token do not pass through Laravel's HTTP or cache events, Telescope or Nightwatch.
 - **Failures are handled.** Harmless reads are retried after network errors; data queries never are.
 - **Artisan commands and Laravel Boost guidelines** are included.
 
@@ -161,7 +161,9 @@ Network errors and `502`, `503` and `504` answers are retried twice, with backof
 
 ### Your password and token
 
-The calls go through plain Guzzle, so Laravel's HTTP events, global middleware and recorders (Telescope, Nightwatch) never see the login password or the token. Keep it that way outside tests. The token is stored in your cache store: protect that store like a password.
+The calls go through plain Guzzle, so Laravel's HTTP events, global middleware and recorders (Telescope, Nightwatch) never see the login password or the token. Keep it that way outside tests.
+
+The token is kept in your cache store, which the package uses without Laravel's cache events, so the cache watchers do not record it either. The store itself still holds it: protect it like a password.
 
 ### Queued jobs
 

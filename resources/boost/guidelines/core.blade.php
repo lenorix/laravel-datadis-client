@@ -5,7 +5,7 @@ Reads electricity data from Datadis, where Spanish distributors publish supply d
 ### Rules that must not be broken
 
 - **The 24 hour rule.** Datadis refuses an identical consumption, maximum power or reactive query for 24 hours and counts the refused ones. Never loop over such a query and never add a retry of your own around it; a repeat throws `RepetitionWindowException` before anything is sent.
-- **Never expose credentials.** The Datadis password and the token must not reach logs, events or request recorders. Keep `datadis-client.http.stack` unset (plain Guzzle) outside tests.
+- **Never expose credentials.** The Datadis password and the token must not reach logs, events or request recorders. Keep `datadis-client.http.stack` unset (plain Guzzle) outside tests, and do not read the token cache key or dispatch cache events for it.
 - **Never put the client in a queued job property.** It holds a password and cannot be serialised: type-hint it in `handle()`.
 - **Writes change data on Datadis.** `newAuthorization()`, `cancelAuthorization()` and `partnerDeleteUser()` are never retried and return Datadis's answer text, so check it. Run them only when the task asks for it.
 - **No test may reach the real Datadis.** Fake it (see the `datadis-testing` skill).
