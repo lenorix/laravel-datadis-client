@@ -3,24 +3,29 @@
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/lenorix/laravel-datadis-client.svg?style=flat-square)](https://packagist.org/packages/lenorix/laravel-datadis-client)
 [![Total Downloads](https://img.shields.io/packagist/dt/lenorix/laravel-datadis-client.svg?style=flat-square)](https://packagist.org/packages/lenorix/laravel-datadis-client)
 
-Laravel integration of [`lenorix/datadis-client`](https://github.com/lenorix/datadis-php-client), the client for [Datadis](https://datadis.es) (supplies, contracts, hourly and quarter-hourly consumption, maximum power, reactive energy). It wires the client to what your application already has:
+Read your electricity data from [Datadis](https://datadis.es) in Laravel: supplies, contracts, hourly and quarter-hourly consumption, maximum power, reactive energy, authorizations and open data.
 
-- **HTTP**: plain Guzzle with the package's settings, so Laravel's events and recorders never see your Datadis password and token. In the test environment the calls go through Laravel's `Http` handler stack instead, so `Http::fake()` and `Http::assertSent()` work (see [Security](#security)).
-- **Cache**: the login token and the **24 hour guard** (Datadis refuses an identical query for 24 hours and counts the refused ones) live in a Laravel cache store shared by all workers. Recording a query is atomic (`Cache::add()`), so two workers never both send it.
-- **Configuration**: one or more accounts in `config/datadis-client.php`, container binding, facade and an artisan command.
+It wraps [`lenorix/datadis-client`](https://github.com/lenorix/datadis-php-client) and connects it to your app:
+
+- **Inject it or use the facade.** One or several Datadis accounts, and supplies of third parties who authorized you.
+- **The 24 hour rule is handled.** Datadis refuses the same data query for 24 hours. The package remembers every query in your cache, so no worker or job repeats one.
+- **Safe by default.** Your Datadis password and token do not pass through Laravel's HTTP events, Telescope or Nightwatch.
+- **Failures are handled.** Harmless reads are retried after network errors; data queries never are.
+- **Artisan commands and Laravel Boost guidelines** are included.
+
+Requires PHP 8.4 and Laravel 13 (Laravel 11 and 12 are not supported: `lenorix/datadis-client` needs Guzzle 8).
 
 ## Installation
 
 ```bash
 composer require lenorix/laravel-datadis-client
-php artisan vendor:publish --tag="datadis-client-config"
 ```
 
-Requires PHP 8.4 and Laravel 13 (`lenorix/datadis-client` needs Guzzle 8, which Laravel 11 and 12 do not allow). Datadis is a third-party service, so its credentials go in `config/services.php`, like any other:
+Datadis is a third-party service, so its credentials go in `config/services.php`:
 
 ```php
 'datadis' => [
-    'username' => env('DATADIS_USERNAME'),
+    'username' => env('DATADIS_USERNAME'),   // the NIF, NIE or CIF you registered with
     'password' => env('DATADIS_PASSWORD'),
 ],
 ```
@@ -28,48 +33,58 @@ Requires PHP 8.4 and Laravel 13 (`lenorix/datadis-client` needs Guzzle 8, which 
 ```dotenv
 DATADIS_USERNAME=A00000000
 DATADIS_PASSWORD=your-password
+DATADIS_LEDGER_KEY=any-secret-of-at-least-16-characters
 ```
 
-`services.datadis` also accepts the other account settings (`api_version`, `timezone`, `timeout`...) and wins over the account named `default` in `config/datadis-client.php`, which keeps the same `DATADIS_*` variables as a fallback and holds extra accounts.
+Check it works:
 
-## Security
+```bash
+php artisan datadis:supplies
+```
 
-**The calls do not go through Laravel's `Http` client unless you ask.** The login request carries your Datadis **password** and its answer carries the **token**; Laravel's request events, global HTTP middleware and recorders (Telescope, Nightwatch, your own logging middleware) would see both. So, unset, `datadis-client.http.stack` is `guzzle`: plain Guzzle with the package's settings, where nothing of Laravel sees the calls.
+To change any other setting, publish the config: `php artisan vendor:publish --tag="datadis-client-config"`.
 
-The test environment (`APP_ENV=testing`) is the exception: it uses `laravel` so that `Http::fake()` works. Do not set `DATADIS_HTTP_STACK=guzzle` in a `.env` your tests load (or override it in `phpunit.xml`): the package refuses to build a client on plain Guzzle in tests, because `Http::fake()` would not apply and a test would reach the real Datadis. To fake Datadis in another environment, set `DATADIS_HTTP_STACK=laravel` and keep in mind what the recorders there will see. The token is also kept in your cache store: protect that store like a password. Details in [Logging and request recorders](#logging-and-request-recorders).
+## Quick start
 
-## Usage
-
-Inject the client, or use the facade, which forwards to the default account:
+Every data call needs the supply as Datadis lists it, so look it up first:
 
 ```php
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
-use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 
-public function __invoke(DatadisClient $client)
+class ConsumptionController
 {
-    $supply = $client->findSupply(Cups::fromString('ES0000000000000000AA0A'));
-    $result = $client->getConsumptionDataOf($supply, Month::of(2026, 7));
-}
+    public function __invoke(DatadisClient $datadis)
+    {
+        $supply = $datadis->findSupply(Cups::fromString('ES0000000000000000AA0A'));
 
-$supplies = Datadis::getSupplies();
+        abort_unless($supply?->isQueryable(), 404);
+
+        $result = $datadis->getConsumptionDataOf($supply, Month::of(2026, 7));
+
+        foreach ($result->records as $reading) {
+            echo $reading->start?->format('Y-m-d H:i'), ' ', $reading->consumptionKWh, " kWh\n";
+        }
+    }
+}
 ```
 
-See the [client documentation](https://github.com/lenorix/datadis-php-client#readme) for every call, the results and the errors.
-
-### Several accounts and holders
+The facade forwards to the same client:
 
 ```php
-use Lenorix\DatadisClient\Values\Nif;
+use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 
-Datadis::account('other')->getSupplies();
-
-$holder = Datadis::forHolder(Nif::fromString('00000000T')); // someone who authorized your account
+Datadis::getSupplies();
 ```
 
-Define each account under `accounts` in `config/datadis-client.php`, with the same keys as `default`:
+Every call, result and error is documented in the [client's README](https://github.com/lenorix/datadis-php-client#readme).
+
+## Common tasks
+
+### Use another account
+
+Add it under `accounts` in `config/datadis-client.php`:
 
 ```php
 'accounts' => [
@@ -82,94 +97,79 @@ Define each account under `accounts` in `config/datadis-client.php`, with the sa
 ],
 ```
 
-Only the account named `default` reads `services.datadis`.
+```php
+Datadis::account('second')->getSupplies();
+```
 
-### Public open data
+### Read the supplies of someone who authorized you
 
-Aggregated consumption by region, tariff and sector. Datadis still asks for an account's token, which it shares with the private client:
+```php
+use Lenorix\DatadisClient\Values\Nif;
+
+$holder = Datadis::forHolder(Nif::fromString('12345678Z'));
+
+$holder->getSupplies();
+```
+
+### Give or take away access to your supplies
+
+```php
+Datadis::newAuthorization($nif);                                       // all your supplies
+Datadis::newAuthorization($nif, $from, $to, Cups::fromString($cups));  // some, for a period
+Datadis::cancelAuthorization($nif);
+Datadis::listAuthorization();
+```
+
+These change data on Datadis and are never retried. Datadis documents them for API v1 and their answers are not verified yet: check the text they return.
+
+### Read the open data
+
+Aggregated consumption by region, tariff and sector:
 
 ```php
 use Lenorix\DatadisClient\PublicApiClient;
 
-app(PublicApiClient::class)->apiSearch($query);   // or Datadis::publicApi('other')
+app(PublicApiClient::class)->apiSearch($query);   // or Datadis::publicApi()
 ```
 
-### Commands
+### Use it from the terminal
 
 ```bash
-php artisan datadis:supplies                          # the supplies the account sees
-php artisan datadis:contract ES0000000000000000AA0A   # access tariff, contracted power, dates
-php artisan datadis:consumption ES0000000000000000AA0A 2026-07 [--to=2026-09] [--quarter-hourly]
-php artisan datadis:authorizations                    # who can read what
-php artisan datadis:authorize 12345678Z [--cups=...] [--from=2026-01-01] [--to=2026-12-31]
-php artisan datadis:authorization:cancel 12345678Z [--cups=...]
+php artisan datadis:supplies
+php artisan datadis:contract ES0000000000000000AA0A
+php artisan datadis:consumption ES0000000000000000AA0A 2026-07 --to=2026-09 --quarter-hourly
+php artisan datadis:authorizations
+php artisan datadis:authorize 12345678Z --cups=ES0000000000000000AA0A --from=2026-01-01 --to=2026-12-31
+php artisan datadis:authorization:cancel 12345678Z
 ```
 
-All of them take `--account=other` and `--holder=00000000T`, and fail with a message (exit code 1), without sending anything, on a malformed NIF, CUPS, month or date. `datadis:consumption` warns that Datadis refuses the same query for 24 hours and counts a refused one: the guard stops a repeat, but do not run it in a loop. `datadis:authorize` and `datadis:authorization:cancel` change data on Datadis.
+All of them take `--account=second` and `--holder=12345678Z`. A malformed NIF, CUPS, month or date fails with a message and sends nothing.
 
-### Retries
+## What to know before production
 
-Network failures and `502`, `503` and `504` answers are retried (twice by default, with exponential backoff and jitter) for the calls where repeating is harmless: the login, the supplies, contract, groups and authorization lists and the other reads. Data queries (consumption, maximum power, reactive energy) and the calls that change data are never retried, because a request that may have reached Datadis uses up the 24 hour rule or changes data a second time. Set `DATADIS_HTTP_RETRIES=0` to turn it off; `http.retries` in the configuration has the delays.
+### The 24 hour rule
 
-### Logging and request recorders
+Datadis refuses an identical consumption, maximum power or reactive query for 24 hours, and counts the refused ones too. The package stops a repeat before sending it and throws `RepetitionWindowException`, which is reported as a warning.
 
-With `DATADIS_HTTP_STACK=laravel` (the default only in the test environment), Laravel's request events, global HTTP middleware and recorders such as Telescope or Nightwatch see the login request (the password) and its answer (the token). Outside tests keep the default (`guzzle`), or exclude `datadis.es` from the recorders and from the request bodies they keep. With `guzzle`, `Http::fake()` does not apply to these calls: fake Datadis in tests, where the stack is `laravel`.
+- **Use a shared cache store** for `DATADIS_CACHE_STORE`: Redis, Memcached or your database. `file` only coordinates processes on one server, and `array` protects nothing.
+- **Set `DATADIS_LEDGER_KEY`.** Without it the secret comes from `APP_KEY`, and rotating the key makes the guard forget the last 24 hours.
+- **Never loop over a data query**, and never add a retry of your own around one.
 
-### Authorizations and partner accounts: read and write
+### Failures and retries
 
-The package gives the whole client, so besides reading supplies, contracts and data you can also manage access from Laravel:
+Network errors and `502`, `503` and `504` answers are retried twice, with backoff, for the login, the lists and the other reads. Consumption, maximum power, reactive energy and every call that changes data are never retried, because Datadis may already have counted them. Set `DATADIS_HTTP_RETRIES=0` to turn retries off.
 
-```php
-use Lenorix\DatadisClient\Values\Cups;
-use Lenorix\DatadisClient\Values\Nif;
+### Your password and token
 
-$nif = Nif::fromString('12345678Z');
-
-Datadis::newAuthorization($nif);                                  // let someone read all your supplies
-Datadis::newAuthorization($nif, $from, $to, Cups::fromString($cups)); // or some, for a period
-Datadis::cancelAuthorization($nif);
-Datadis::listAuthorization();                                     // who can read what
-Datadis::getGroups();                                             // API v2
-Datadis::partnerUserList();                                       // partner accounts
-Datadis::partnerDeleteUser($nif);
-Datadis::partnerAgreementDate();
-```
-
-Every method of the client works the same through the facade, the injected `DatadisClient` and `Datadis::account('name')`; the open data ones (`apiSearch()`, `apiSumSearch()`, `apiSearchAuto()`, `apiSumSearchAuto()`, `apiSearchAll()`, `apiSearchAutoAll()`) through `Datadis::publicApi()` or the injected `PublicApiClient`. The test suite calls each of them, and fails if the client gains a method it does not cover.
-
-The calls that change data (`newAuthorization()`, `cancelAuthorization()`, `partnerDeleteUser()`) are never retried, and Datadis documents the authorization ones for API v1 with answers that are not verified yet: check the result text they return.
+The calls go through plain Guzzle, so Laravel's HTTP events, global middleware and recorders (Telescope, Nightwatch) never see the login password or the token. Keep it that way outside tests. The token is stored in your cache store: protect that store like a password.
 
 ### Queued jobs
 
-The client holds a password and cannot be serialised: resolve it in `handle()`, never keep it in a property.
+The client holds a password and cannot be serialised. Type-hint it in `handle()`, never in the constructor or a property. For a backfill, dispatch one job per month with `$tries = 1`.
 
-## Configuration
+## Testing your application
 
-| Key | Purpose |
-|---|---|
-| `default` | Account used by the binding, the facade and the command (`DATADIS_ACCOUNT`). |
-| `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`, `check_username_control` (`false` accepts a username whose NIF/NIE/CIF control character does not match). |
-| `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty, and anything that is not a store name fails. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
-| `http.stack` | `guzzle` (the default, except in the test environment) or `laravel` (`Http::fake()` works, but Laravel's events and recorders see the login password and token): `DATADIS_HTTP_STACK`. |
-| `http.retries` | `max` (0 to 10, default 2: `DATADIS_HTTP_RETRIES`), `base_delay_ms` and `max_delay_ms` of the backoff. Reads only; data queries and writes are never retried. |
-| `http.options` | Extra Guzzle options for every call (a proxy, `verify`...), merged over the package's own settings. |
-| `report_level` | Log level of a refused repeat (`RepetitionWindowException`), `warning` by default (`DATADIS_REPORT_LEVEL`); one of the PSR-3 levels, anything else fails when the client is built. It is set after your own `withExceptions()`, so it wins over a level you set there; use `null` to leave your handler alone. |
-| `ledger.key` | Secret of the guard's keyed hash, at least 16 bytes (`DATADIS_LEDGER_KEY`); derived from `APP_KEY` if empty. Changing it forgets the queries already made. |
-
-A repeated query fails with `RepetitionWindowException` before anything is sent.
-
-**Set `DATADIS_LEDGER_KEY`.** Derived from `APP_KEY`, the secret changes whenever you rotate the application key, and the guard forgets the queries of the last 24 hours, so they can be sent (and counted) again.
-
-## Laravel Boost
-
-The package ships [Laravel Boost](https://laravel.com/docs/boost) resources, so your coding agent learns the client and the Datadis rules (the 24 hour query rule, hour labels, errors) when you run `php artisan boost:install` or `boost:update --discover`:
-
-- `resources/boost/guidelines/core.blade.php`: the conventions, always loaded.
-- Skills, loaded on demand: `datadis-development` (calls, results, errors), `datadis-sync` (scheduled jobs and backfills) and `datadis-testing` (`Http::fake()`).
-
-## Testing
-
-In the test environment (`APP_ENV=testing`) the calls go through Laravel's `Http` client, so you can fake Datadis. Elsewhere the default stack is plain Guzzle: set `DATADIS_HTTP_STACK=laravel`, or give it your own Guzzle handler at runtime with `config()->set('datadis-client.http.options.handler', $handlerStack)` (not in a config file: an object there breaks `config:cache`).
+In the test environment (`APP_ENV=testing`) the calls go through Laravel's `Http` client, so fake Datadis as any other service:
 
 ```php
 Http::preventStrayRequests();   // a URL that stops matching must fail, not reach Datadis
@@ -179,26 +179,35 @@ Http::fake([
 ]);
 ```
 
-```bash
-composer test            # 200 property cases each; DATADIS_PBT_ITERATIONS=n changes it
-composer test-pbt        # 2000 cases each
-composer test-coverage   # fails under 100 % of src/
-composer phpstan         # level max
-composer format          # Pint
-composer audit
-```
+- Do not set `DATADIS_HTTP_STACK=guzzle` in a `.env` your tests load: the package refuses to build the client, because a test would reach the real Datadis.
+- To fake Datadis outside `testing`, set `DATADIS_HTTP_STACK=laravel`, or give a Guzzle mock handler with `config()->set('datadis-client.http.options.handler', $handlerStack)`.
 
-`composer.lock` is not versioned, as is usual for a library: CI resolves the newest and the lowest allowed dependencies on every run and audits them.
+## Configuration
 
-## Security vulnerabilities and contributing
+All keys are in `config/datadis-client.php`.
 
-Report a vulnerability privately, as the [security policy](.github/SECURITY.md) explains. To contribute, read [CONTRIBUTING](.github/CONTRIBUTING.md).
+| Key | What it does | Default |
+|---|---|---|
+| `default` | Account used by the container, the facade and the commands (`DATADIS_ACCOUNT`). | `default` |
+| `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`, `check_username_control`. The account named `default` takes its credentials from `services.datadis`. | `v2`, `Europe/Madrid`, 120 s |
+| `cache.store` | Cache store for the token and the 24 hour guard (`DATADIS_CACHE_STORE`). Anything that is not a store name fails. | default store |
+| `ledger.key` | Secret of at least 16 bytes for the guard (`DATADIS_LEDGER_KEY`). | from `APP_KEY` |
+| `http.stack` | `guzzle` or `laravel` (`DATADIS_HTTP_STACK`). `laravel` lets Laravel's events and recorders see the password and the token. | `guzzle`; `laravel` in tests |
+| `http.retries` | `max` (0 to 10, `DATADIS_HTTP_RETRIES`), `base_delay_ms`, `max_delay_ms`. | 2, 1000, 30000 |
+| `http.options` | Extra Guzzle options for every call: a proxy, `verify`... | none |
+| `report_level` | PSR-3 log level of a refused repeat (`DATADIS_REPORT_LEVEL`), or `null` to leave your exception handler alone. | `warning` |
 
-## Credits
+## Laravel Boost
 
-- [Jesus Hernandez](https://github.com/jhg)
-- [All Contributors](https://github.com/lenorix/laravel-datadis-client/graphs/contributors)
+The package ships [Laravel Boost](https://laravel.com/docs/boost) resources. Run `php artisan boost:install` (or `boost:update --discover`) and your coding agent learns how to call Datadis, which calls count against the 24 hour rule, how to write sync jobs and how to test them.
 
-## License
+- **Guideline** (always loaded): conventions and the rules not to break.
+- **`datadis-development`**: calls, results and errors.
+- **`datadis-sync`**: scheduled jobs and backfills.
+- **`datadis-testing`**: faking Datadis in tests.
 
-The MIT License (MIT). See [License File](LICENSE.md).
+## Contributing, security and license
+
+To contribute, read [CONTRIBUTING](.github/CONTRIBUTING.md). Report a vulnerability privately, as the [security policy](.github/SECURITY.md) explains. See the [changelog](CHANGELOG.md).
+
+Created by [Jesus Hernandez](https://github.com/jhg) and [contributors](https://github.com/lenorix/laravel-datadis-client/graphs/contributors). Released under the [MIT License](LICENSE.md).

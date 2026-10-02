@@ -1,20 +1,21 @@
 ## Laravel Datadis Client
 
-This package integrates `lenorix/datadis-client` with Laravel to read electricity data from Datadis, the platform where Spanish distributors publish supply data (supplies, contracts, hourly and quarter-hourly consumption, maximum power, reactive energy). The client is plain PHP; this package binds it to Laravel's cache and configuration, and sends its calls through plain Guzzle, or through Laravel's `Http` client when `datadis-client.http.stack` is `laravel` (the default in the test environment, so `Http::fake()` works).
+Reads electricity data from Datadis, where Spanish distributors publish supply data: supplies, contracts, hourly and quarter-hourly consumption, maximum power, reactive energy, authorizations and open data. It wraps `lenorix/datadis-client` and connects it to Laravel's cache and configuration.
 
-### Conventions
+### Rules that must not be broken
 
-- Get the client by injecting `Lenorix\DatadisClient\DatadisClient` or with the `Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient` facade (default account). Use `LaravelDatadisClient::account('name')` for another account and `->forHolder(Nif)` for a third party who authorized the account.
-- Credentials live in `config/services.php` under `datadis` (`DATADIS_USERNAME`, `DATADIS_PASSWORD`); extra accounts and other settings in `config/datadis-client.php`. Never hard-code them, log them or put the client in a queued job property: it cannot be serialised, so resolve it in `handle()`.
-- Method and field names are Datadis's own (`getConsumptionData()`, `consumptionKWh`, `contractedPowerkW`).
-- Energy and power values are decimal strings, never floats: add them with `Brick\Math\BigDecimal`.
-- The client reads and writes: besides the reads it manages access with `newAuthorization()`, `cancelAuthorization()`, `listAuthorization()` and `partnerDeleteUser()`. They are never retried and return Datadis's answer text, so check it.
-- Artisan: `datadis:supplies`, `datadis:contract`, `datadis:consumption`, `datadis:authorizations`, `datadis:authorize` and `datadis:authorization:cancel` (all take `--account` and `--holder`). `datadis:consumption` counts for the 24 hour rule.
-- Reads that fail with a network error or a 502, 503 or 504 are retried by the package (`datadis-client.http.retries`); data queries and writes never are: do not add your own retry around them.
-- Public open data (aggregated by region, tariff, sector) is `app(Lenorix\DatadisClient\PublicApiClient::class)` or `LaravelDatadisClient::publicApi()`.
-- Datadis refuses an identical consumption, maximum power or reactive query for 24 hours, and counts the refused ones. Never loop or retry such a query. The package guards this with a cache shared by all workers; a repeat throws `RepetitionWindowException` before anything is sent.
-- Always start from the supplies list: `findSupply(Cups)` gives the CUPS, distributor code and point type every data call needs. Use the `...Of($supply, Month)` methods.
-- Datadis hours end at `24:00` and a daylight saving day has 23 or 25 rows: never key readings by date and time, use each reading's `start`.
+- **The 24 hour rule.** Datadis refuses an identical consumption, maximum power or reactive query for 24 hours and counts the refused ones. Never loop over such a query and never add a retry of your own around it; a repeat throws `RepetitionWindowException` before anything is sent.
+- **Never expose credentials.** The Datadis password and the token must not reach logs, events or request recorders. Keep `datadis-client.http.stack` unset (plain Guzzle) outside tests.
+- **Never put the client in a queued job property.** It holds a password and cannot be serialised: type-hint it in `handle()`.
+- **Writes change data on Datadis.** `newAuthorization()`, `cancelAuthorization()` and `partnerDeleteUser()` are never retried and return Datadis's answer text, so check it. Run them only when the task asks for it.
+- **No test may reach the real Datadis.** Fake it (see the `datadis-testing` skill).
+
+### Using the client
+
+- Inject `Lenorix\DatadisClient\DatadisClient`, or use the `Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient` facade. `LaravelDatadisClient::account('name')` picks another account, `->forHolder(Nif)` reads a third party's supplies, and `app(Lenorix\DatadisClient\PublicApiClient::class)` reads the open data.
+- Start from the supply: `findSupply(Cups)` returns it, or `null`. Check `isQueryable()` before the `...Of($supply, ...)` calls.
+- Method and field names are Datadis's own (`getConsumptionData()`, `consumptionKWh`). Energy values are decimal strings, never floats.
+- Datadis hours end at `24:00` and a daylight saving day has 23 or 25 rows: use each reading's `start`, never date plus time.
 
 @verbatim
 <code-snippet name="Read a month of consumption" lang="php">
@@ -33,6 +34,17 @@ public function handle(DatadisClient $client): void
 </code-snippet>
 @endverbatim
 
-- Security: unset, `datadis-client.http.stack` is `guzzle` (plain Guzzle) so Laravel's HTTP events, middleware and recorders never see the login password and the token; the test environment uses `laravel` so `Http::fake()` works. Do not switch production to `laravel`, and never log or record Datadis requests.
-- Test with `Http::fake()` (and `Http::preventStrayRequests()`), which applies in the test environment where the stack is `laravel`: no test should reach the real Datadis. The `datadis-testing` skill has the endpoints and payloads.
-- Use a cache store with an atomic `add()` for `datadis-client.cache.store`: Redis, Memcached or database for several servers; `file` only coordinates processes on one host; `array` protects nothing across workers.
+- Artisan: `datadis:supplies`, `datadis:contract`, `datadis:consumption` (counts for the 24 hour rule), `datadis:authorizations`, `datadis:authorize`, `datadis:authorization:cancel`. All take `--account` and `--holder`.
+
+### Configuration
+
+- Credentials: `config/services.php`, key `datadis` (`DATADIS_USERNAME`, `DATADIS_PASSWORD`). Other accounts and settings: `config/datadis-client.php`. Never hard-code them.
+- `datadis-client.cache.store`: a store with an atomic `add()` (Redis, Memcached, database). `file` only coordinates one server and `array` protects nothing.
+- `datadis-client.ledger.key` (`DATADIS_LEDGER_KEY`): set it; otherwise `APP_KEY` is used and rotating it makes the guard forget the last 24 hours.
+- Harmless reads are retried by the package after network errors and 502, 503 and 504 (`datadis-client.http.retries`); data queries and writes never are.
+
+### More detail
+
+- `datadis-development`: calls, results, errors and tariff periods.
+- `datadis-sync`: scheduled jobs and backfills.
+- `datadis-testing`: faking Datadis with `Http::fake()`.
