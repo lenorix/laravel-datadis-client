@@ -168,7 +168,7 @@ All of them take `--account=second` and `--holder=12345678Z`. A malformed NIF, C
 Datadis refuses an identical consumption, maximum power or reactive query for 24 hours, and counts the refused ones too. The package stops a repeat before sending it and throws `RepetitionWindowException`, which is reported as a warning.
 
 - **Use a shared cache store** for `DATADIS_CACHE_STORE`: Redis, Memcached or your database. `file` only coordinates processes on one server, and `array` protects nothing.
-- **Set `DATADIS_LEDGER_KEY`.** Without it the secret comes from `APP_KEY`, and rotating the key makes the guard forget the last 24 hours.
+- **Set `DATADIS_LEDGER_KEY`.** Without it the secret is derived from `APP_KEY`, and rotating the key makes the guard forget the last 24 hours.
 - **Schedule repeats every second day.** The guard keeps a query for 24 hours and 10 minutes, so asking the same one at the same time the next day is refused.
 - **Never loop over a data query**, and never add a retry of your own around one.
 

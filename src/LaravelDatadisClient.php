@@ -248,12 +248,30 @@ class LaravelDatadisClient
 
     private function ledgerKey(): string
     {
-        $key = $this->config()->get('datadis-client.ledger.key') ?: $this->config()->get('app.key');
+        $own = $this->config()->get('datadis-client.ledger.key');
+
+        // Anything but a text must fail: ignoring it would key the guard with the application key without saying so.
+        if ($own !== null && ! is_string($own)) {
+            throw new ConfigurationException('datadis-client.ledger.key must be a text or null, '.get_debug_type($own).' given.');
+        }
+
+        if ($own !== null && $own !== '') {
+            return $own;
+        }
+
+        $key = $this->config()->get('app.key');
 
         if (! is_string($key) || $key === '') {
             throw new ConfigurationException('Set datadis-client.ledger.key (DATADIS_LEDGER_KEY) or the application key: the 24 hour guard needs a secret.');
         }
 
-        return str_starts_with($key, 'base64:') ? (base64_decode(substr($key, 7), true) ?: $key) : $key;
+        $bytes = str_starts_with($key, 'base64:') ? (base64_decode(substr($key, 7), true) ?: $key) : $key;
+
+        if (strlen($bytes) < 16) {
+            throw new ConfigurationException('The application key is too short to key the 24 hour guard: set datadis-client.ledger.key (DATADIS_LEDGER_KEY) to a secret of at least 16 bytes.');
+        }
+
+        // Derived, not the application key itself: the key of the guard is used for nothing else.
+        return hash_hmac('sha256', 'laravel-datadis-client: 24 hour guard', $bytes, true);
     }
 }

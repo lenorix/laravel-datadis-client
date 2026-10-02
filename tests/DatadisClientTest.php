@@ -647,3 +647,29 @@ it('takes a cache repository that is not Laravel\'s as it is', function () {
 
     expect(app(Manager::class)->account())->toBeInstanceOf(DatadisClient::class);
 });
+
+it('refuses a guard key that is not a text, instead of falling back to the application key', function (mixed $key) {
+    config()->set('datadis-client.ledger.key', $key);
+
+    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'must be a text or null');
+})->with(['int' => [123], 'array' => [['secret']], 'bool' => [true]]);
+
+it('keys the guard with a secret derived from the application key, not the key itself', function () {
+    config()->set('datadis-client.ledger.key', null);
+    config()->set('app.key', str_repeat('a', 32));
+    $secret = (fn () => $this->ledgerKey())->call(app(Manager::class));
+
+    expect(strlen($secret))->toBe(32);
+    expect($secret)->not->toBe(str_repeat('a', 32));
+    expect($secret)->toBe(hash_hmac('sha256', 'laravel-datadis-client: 24 hour guard', str_repeat('a', 32), true));
+
+    config()->set('datadis-client.ledger.key', 'my-own-guard-secret');
+    expect((fn () => $this->ledgerKey())->call(app(Manager::class)))->toBe('my-own-guard-secret');
+});
+
+it('refuses an application key too short to key the guard', function () {
+    config()->set('datadis-client.ledger.key', null);
+    config()->set('app.key', 'short');
+
+    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'too short');
+});
