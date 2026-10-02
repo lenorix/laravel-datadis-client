@@ -1,11 +1,10 @@
 <?php
 
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Contracts\Debug\ExceptionHandler;
-use Illuminate\Http\Client\Events\ConnectionFailed;
-use Illuminate\Http\Client\Events\RequestSending;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -15,6 +14,7 @@ use Lenorix\DatadisClient\Exceptions\DatadisException;
 use Lenorix\DatadisClient\Exceptions\NoDataException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Exceptions\ServiceUnavailableException;
+use Lenorix\DatadisClient\Exceptions\TransportException;
 use Lenorix\DatadisClient\PublicApi\Community;
 use Lenorix\DatadisClient\PublicApi\PublicSearchQuery;
 use Lenorix\DatadisClient\PublicApiClient;
@@ -269,27 +269,18 @@ it('sets the configured level on the exception handler', function () {
     expect((fn () => $this->levels)->call($handler))->toHaveKey(RepetitionWindowException::class, 'info');
 });
 
-it('keeps the calls away from Laravel\'s Http events, recorders and fakes with the guzzle stack', function () {
+it('fails a call on the guzzle stack as a transport error, never through Laravel\'s Http', function () {
+    $mock = new MockHandler([
+        new ConnectException('connection refused', new GuzzleHttp\Psr7\Request('POST', 'https://datadis.es')),
+    ]);
     config()->set('datadis-client.http.stack', 'guzzle');
-    config()->set('datadis-client.accounts.default.base_url', 'https://datadis.invalid');
-    config()->set('datadis-client.accounts.default.connect_timeout', 1);
-    Event::fake([RequestSending::class, ConnectionFailed::class]);
+    config()->set('datadis-client.http.options', ['handler' => HandlerStack::create($mock)]);
     Http::fake();
 
-    // .invalid never resolves: the call fails on the network, not on Laravel's stray request guard.
-    $caught = null;
-    try {
-        app(DatadisClient::class)->getSupplies();
-    } catch (DatadisException $e) {
-        $caught = $e;
-    }
-
     // With the Laravel stack the empty Http::fake() would have answered, so nothing would have failed.
-    expect($caught)->toBeInstanceOf(DatadisException::class);
-    expect($caught->getMessage())->not->toContain('StrayRequestException');
-
+    expect(fn () => app(DatadisClient::class)->getSupplies())->toThrow(TransportException::class);
+    expect($mock->count())->toBe(0);
     Http::assertNothingSent();
-    Event::assertNotDispatched(RequestSending::class);
 });
 
 it('refuses an unknown http stack', function () {
@@ -335,4 +326,10 @@ it('completes a whole flow on the guzzle stack, decoding the answers, without to
     expect($result->records[0]->consumptionKWh)->toBe('0.123');
     expect($mock->count())->toBe(0);   // login, supplies and consumption all answered by Guzzle
     Http::assertNothingSent();
+});
+
+it('never reaches the network on the guzzle stack unless a test queues an answer', function () {
+    config()->set('datadis-client.http.stack', 'guzzle');
+
+    expect(fn () => app(DatadisClient::class)->getSupplies())->toThrow(TransportException::class);
 });

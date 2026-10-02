@@ -86,4 +86,11 @@ jobs:
         run: composer update --prefer-stable --prefer-dist --no-interaction
 
       - name: Check the coverage
-        run: vendor/bin/pest --coverage --min=100
+        run: vendor/bin/pest --coverage --min=100 --coverage-clover=build/coverage.xml
+
+      - name: Keep the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: build/coverage.xml

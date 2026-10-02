@@ -7,6 +7,7 @@ All notable changes to `laravel-datadis-client` will be documented in this file.
 - Ship Laravel Boost guidelines and skills (`datadis-development`, `datadis-sync`, `datadis-testing`).
 - Require `lenorix/datadis-client` ^0.3.0: a `401` on a guarded query is never resent and a range before the contract start is refused locally.
 - Report `RepetitionWindowException` as a warning through the exception handler.
+- Test the 24 hour guard under real concurrency (several processes on a file cache) and keep the suite off the network.
 - Require 100 % coverage of `src/` in CI (`composer test-coverage`); add `http.options` for extra Guzzle options.
 - Add `http.stack` (`DATADIS_HTTP_STACK`): `guzzle` keeps Laravel's events and recorders from seeing the login password and token.
 - Document the ledger key.

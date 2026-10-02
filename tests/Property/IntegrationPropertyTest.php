@@ -63,7 +63,7 @@ it('guards each holder apart: asking for another holder is allowed, repeating on
         });
 });
 
-it('sends a guarded query at most once however many clients claim it', function () {
+it('sends a guarded query at most once however many clients claim it one after another', function () {
     $this->limitTo(iterations())->forAll(Generators::choose(2, 8), Generators::choose(1, 12))->then(function (int $claims, int $month) {
         Http::swap(new Factory);
         Http::preventStrayRequests();

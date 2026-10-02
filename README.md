@@ -75,7 +75,20 @@ Datadis::account('other')->getSupplies();
 $holder = Datadis::forHolder(Nif::fromString('00000000T')); // someone who authorized your account
 ```
 
-Define each account under `accounts` in the configuration with the same keys as `default`.
+Define each account under `accounts` in `config/datadis-client.php`, with the same keys as `default`:
+
+```php
+'accounts' => [
+    'default' => [/* ... */],
+    'second' => [
+        'username' => env('DATADIS_SECOND_USERNAME'),
+        'password' => env('DATADIS_SECOND_PASSWORD'),
+        'timezone' => 'Atlantic/Canary',
+    ],
+],
+```
+
+Only the account named `default` reads `services.datadis`.
 
 ### Public open data
 
@@ -112,7 +125,7 @@ The client holds a password and cannot be serialised: resolve it in `handle()`, 
 | Key | Purpose |
 |---|---|
 | `default` | Account used by the binding, the facade and the command (`DATADIS_ACCOUNT`). |
-| `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`. |
+| `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`), `timezone`, `timeout`, `connect_timeout`, `base_url`, `user_agent`, `check_username_control` (`false` accepts a username whose NIF/NIE/CIF control character does not match). |
 | `cache.store` | Store for token and guard (`DATADIS_CACHE_STORE`); default store if empty. Use Redis, Memcached, database or DynamoDB for several servers; `file` locks the file, so it only coordinates processes on one host, and `array` lives in one process and protects nothing across workers. It holds the token, so protect it like a password. |
 | `http.stack` | `laravel` (default, `Http::fake()` works) or `guzzle` (no Laravel events or recorders see the login password and token): `DATADIS_HTTP_STACK`. |
 | `http.options` | Extra Guzzle options for every call (a proxy, `verify`...), merged over the package's own settings. |
