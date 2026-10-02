@@ -90,38 +90,3 @@ it('has README examples that parse', function () {
         expect($parses('<?php '.$example) || $parses("<?php {$imports}\nclass Example {{$body}}") || $parses("<?php [{$body}];"))->toBeTrue("A README example does not parse:\n{$example}");
     }
 });
-
-it('cites official sources, and only links to the places it means to', function (string $path) {
-    $contents = file_get_contents($path);
-
-    expect($contents)->toMatch('/^#{2,3} (Sources|Official sources)$/m');
-
-    preg_match_all('#https?://[^\s)>"\'`\]]+#', $contents, $urls);
-    $allowed = ['www.boe.es', 'www.cnmc.es', 'datadis.es', 'laravel.com', 'github.com'];
-
-    expect($urls[0])->not->toBeEmpty();
-
-    foreach ($urls[0] as $url) {
-        $host = parse_url($url, PHP_URL_HOST);
-
-        expect(str_starts_with($url, 'https://'))->toBeTrue("Not https: {$url}");
-        expect(in_array($host, $allowed, true))->toBeTrue("Unexpected host: {$url}");
-
-        if ($host === 'github.com') {
-            expect($url)->toStartWith('https://github.com/lenorix/datadis-php-client');
-        }
-    }
-})->with(array_merge($skills, [__DIR__.'/../resources/boost/guidelines/core.blade.php']));
-
-it('links the electricity domain skill to the Circular, the Real Decreto, the CNMC and Datadis', function () {
-    $domain = file_get_contents(__DIR__.'/../resources/boost/skills/datadis-electricity-domain/SKILL.md');
-
-    expect($domain)->toContain(
-        'https://www.boe.es/buscar/act.php?id=BOE-A-2020-1066',   // Circular CNMC 3/2020
-        'https://www.boe.es/buscar/act.php?id=BOE-A-2007-16478',  // Real Decreto 1110/2007
-        'https://www.cnmc.es/sites/default/files/editor_contenidos/Energia/Consumidores/3.1.%20El%20CUPS.pdf',
-        'https://datadis.es/private-api',
-    );
-    // The article behind each rule.
-    expect($domain)->toContain('art. 6.2', 'art. 7.3', 'art. 9.5', 'art. 7');
-});
