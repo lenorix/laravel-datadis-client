@@ -4,8 +4,10 @@ use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
+use Lenorix\DatadisClient\Exceptions\TransportException;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
+use Lenorix\LaravelDatadisClient\LaravelDatadisClient;
 
 it('sends nothing when it imports', function () {
     fakeEverything();
@@ -56,4 +58,12 @@ it('imports on a cache repository that is not Laravel\'s, without a lock', funct
 
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
     expect($held)->toHaveCount(1);
+});
+
+it('gives an import a client that cannot send, whatever the environment says', function () {
+    $client = (fn () => $this->clientForImport(null))->call(app(LaravelDatadisClient::class));
+
+    // Not a login, not a data query: the transport is the one that throws ("An import never sends a request"), so nothing can reach Datadis or Http::fake().
+    expect(fn () => $client->checkLogin())->toThrow(TransportException::class, 'LogicException');   // the client reports the transport's failure
+    Http::assertNothingSent();
 });
