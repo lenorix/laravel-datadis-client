@@ -174,7 +174,7 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 
 - **Use `redis` or `database` as your cache** (`CACHE_STORE`). The package keeps the token and the guard in Laravel's default cache and has no cache setting of its own. Redis, Memcached and the database are shared by every worker and server; `file` only coordinates processes on one server, and `array` lives in one process, so with it the guard cannot stop another worker. The `null` driver remembers nothing and is refused.
 - **Set `DATADIS_LEDGER_KEY`.** Without it the secret is derived from `APP_KEY`, and rotating the key makes the guard forget the last 24 hours.
-- **Schedule repeats every second day.** The guard keeps a query for 24 hours and 10 minutes, so asking the same one at the same time the next day is refused.
+- **Refresh the current month with `getLatestConsumptionDataOf()`** (and `getLatestMaxPowerOf()`) in a daily job. The guard keeps a query for 24 hours and 10 minutes, so asking the same range at the same time the next day is refused; these methods alternate the range from one day to the next, so nothing repeats. One run a day.
 - **Never loop over a data query**, and never add a retry of your own around one.
 
 ### Moving from your own record of queries

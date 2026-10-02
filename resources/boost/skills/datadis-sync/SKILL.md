@@ -16,7 +16,7 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 - A query is "used for today" once it may have reached Datadis. Only `requestSent === false` on a `DatadisException` means it is still available.
 - The package records each attempt in Laravel's default cache store (`CACHE_STORE`), so a second worker, job or deploy gets `RepetitionWindowException` before anything is sent. It must be shared and persistent (`redis` or `database`, not `file` or `array`), and never flushed.
 - Changing `datadis-client.ledger.key` (or `APP_KEY` when no key is set) forgets every recorded query.
-- The guard keeps a query for 24 hours and 10 minutes: asking the same one at the same time the next day is refused. Schedule a repeat of the same query every second day.
+- The guard keeps a query for 24 hours and 10 minutes: asking the same one at the same time the next day is refused. For a daily refresh use `getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()`: the range alternates from one day to the next, so no query repeats. Any other repeat of the same query goes every second day.
 - Switching from a record of your own (a table, say)? The guard does not know it: before any worker sends a guarded query with the new client, either wait 24 hours and 10 minutes, or seed the guard once with `LaravelDatadisClient::rememberConsumption($cups, $distributorCode, $pointType, $from, $to, at: $sentAt)` (`$cups` a `Cups`, `$from` and `$to` `Month` values from `Month::fromString('2026/07')`, `$sentAt` a `DateTimeInterface` at most ten minutes ahead of now) for every query sent in the last 25 hours, rejected and timed-out ones included (`rememberMaxPower()` and `rememberReactive()` take only the CUPS, the code and the months). The order does not matter and repeats are fine: the guard keeps the newest attempt of each query. Maximum power and reactive energy are one guard entry, so remembering one blocks the other. Pass `account:` for a named account, and pause the workers and the scheduler while you import. If the old record may be incomplete, wait.
 - Never wrap a data query in a retry: not `$tries`, not `retry()`, not `RetryingClient`. Let the next scheduled run try again tomorrow.
 - Store the whole result, `raw` included: you cannot ask again for 24 hours.
@@ -35,6 +35,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\DatadisClient\Exceptions\InvalidRequestException;
 use Lenorix\DatadisClient\Exceptions\NoDataException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Time\Month;
@@ -124,19 +125,48 @@ class SyncSupplyRange implements ShouldQueue, ShouldBeUnique
 }
 ```
 
-Run the backfill once, and schedule only the months that can still change:
+Run the backfill once, and refresh the months that can still change every day with a job of its own:
 
 ```php
-PlanSupplySync::dispatch($cups, months: 24);   // once: the whole history (start the schedule below the day after, or its first run repeats the last two months within the window)
+class RefreshSupply implements ShouldQueue
+{
+    use Queueable;
 
-Schedule::job(new PlanSupplySync($cups, months: 2))
-    ->dailyAt('04:00')
-    ->when(fn () => intdiv(now()->timestamp, 86400) % 2 === 0);   // every second day: this month and the previous one
+    public int $tries = 1;      // a data query must not be repeated by the queue
+
+    public int $timeout = 600;
+
+    public function __construct(public string $cups)
+    {
+        $this->onConnection('datadis');
+    }
+
+    public function handle(DatadisClient $client): void
+    {
+        $supply = $client->findSupply(Cups::fromString($this->cups));
+        if (! $supply?->isQueryable()) {
+            return;
+        }
+
+        try {
+            // the current month today, the previous one and the current one tomorrow: never yesterday's query
+            $result = $client->getLatestConsumptionDataOf($supply);
+        } catch (NoDataException|RepetitionWindowException|InvalidRequestException) {
+            return; // nothing yet, already asked today, or the contract has nothing to refresh
+        }
+
+        // persist $result->records and each ->raw
+    }
+}
 ```
 
-Every second day, not every day: the guard keeps a query for 24 hours and 10 minutes (a margin for clock differences with Datadis). A job that repeats the same query at the same time each day is refused locally every other run. Those refused runs are harmless, since the job catches `RepetitionWindowException`, but they fetch nothing.
+```php
+PlanSupplySync::dispatch($cups, months: 24);   // once: the whole history; start the daily job the day after, or its first run may repeat a query of the backfill within the window
 
-Count the days (the `when()` above) instead of using `cron('0 4 */2 * *')`: that runs on the odd days of the month, so the 31st and the 1st of the next month are consecutive and the query is refused once there.
+Schedule::job(new RefreshSupply($cups))->dailyAt('04:00');
+```
+
+`getLatestConsumptionDataOf()` alternates its range by the civil day in Madrid, so a run at the same time every day is never refused: yesterday's range differs from today's. Do not ask the same range every day instead: the guard keeps a query for 24 hours and 10 minutes (a margin for clock differences with Datadis), and a job that repeats it at the same time each day is refused locally every other run. A second run on the same day is refused like any repeat, so schedule one a day. `getLatestMaxPowerOf()` does the same for maximum power; reactive energy shares its guard entry with maximum power, so ask it for closed months only.
 
 ## Rules of thumb
 

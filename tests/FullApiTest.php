@@ -34,6 +34,8 @@ function everyClientCall(): array
         'getContractDetailOf' => [fn ($c) => $c->getContractDetailOf($c->findSupply($cups())), 'get-contract-detail'],
         'getConsumptionDataOf' => [fn ($c) => $c->getConsumptionDataOf($c->findSupply($cups()), monthsAgo()), 'get-consumption-data'],
         'getMaxPowerOf' => [fn ($c) => $c->getMaxPowerOf($c->findSupply($cups()), monthsAgo()), 'get-max-power'],
+        'getLatestConsumptionDataOf' => [fn ($c) => $c->getLatestConsumptionDataOf($c->findSupply($cups())), 'get-consumption-data'],
+        'getLatestMaxPowerOf' => [fn ($c) => $c->getLatestMaxPowerOf($c->findSupply($cups())), 'get-max-power'],
         'getReactiveDataOf' => [fn ($c) => $c->getReactiveDataOf($c->findSupply($cups()), monthsAgo()), 'get-reactive-data'],
         'newAuthorization' => [fn ($c) => $c->newAuthorization($nif(), null, null, $cups()), 'new-authorization'],
         'cancelAuthorization' => [fn ($c) => $c->cancelAuthorization($nif()), 'cancel-authorization'],
