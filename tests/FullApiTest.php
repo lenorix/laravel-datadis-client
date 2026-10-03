@@ -64,11 +64,11 @@ function offlineClientCalls(): array
     return [
         'assertServedRange' => [fn ($c) => $c->assertServedRange(monthsAgo(), monthsAgo(1)), null],
         'consumptionDataBlockedUntil' => [fn ($c) => $c->consumptionDataBlockedUntil($cups(), '2', 5, monthsAgo()), null],
-        'consumptionDataOfBlockedUntil' => [fn ($c) => $c->consumptionDataOfBlockedUntil($supply($c), monthsAgo()), null],
+        'consumptionDataBlockedUntilOf' => [fn ($c) => $c->consumptionDataBlockedUntilOf($supply($c), monthsAgo()), null],
         'maxPowerBlockedUntil' => [fn ($c) => $c->maxPowerBlockedUntil($cups(), '2', monthsAgo()), null],
-        'maxPowerOfBlockedUntil' => [fn ($c) => $c->maxPowerOfBlockedUntil($supply($c), monthsAgo()), null],
+        'maxPowerBlockedUntilOf' => [fn ($c) => $c->maxPowerBlockedUntilOf($supply($c), monthsAgo()), null],
         'reactiveDataBlockedUntil' => [fn ($c) => $c->reactiveDataBlockedUntil($cups(), '2', monthsAgo()), null],
-        'reactiveDataOfBlockedUntil' => [fn ($c) => $c->reactiveDataOfBlockedUntil($supply($c), monthsAgo()), null],
+        'reactiveDataBlockedUntilOf' => [fn ($c) => $c->reactiveDataBlockedUntilOf($supply($c), monthsAgo()), null],
         'rememberConsumptionData' => [fn ($c) => $c->rememberConsumptionData($sentAt(), $cups(), '2', 5, monthsAgo()), true],
         'rememberConsumptionDataOf' => [fn ($c) => $c->rememberConsumptionDataOf($sentAt(), $supply($c), monthsAgo(4)), true],
         'rememberMaxPower' => [fn ($c) => $c->rememberMaxPower($sentAt(), $cups(), '2', monthsAgo()), true],
@@ -139,7 +139,7 @@ it('refuses every reactive energy call on API v1 before sending anything, and le
         fn () => $client->getReactiveData(Cups::fromString(CUPS), '2', monthsAgo()),
         fn () => $client->getReactiveDataOf($supply, monthsAgo()),
         fn () => $client->reactiveDataBlockedUntil(Cups::fromString(CUPS), '2', monthsAgo()),
-        fn () => $client->reactiveDataOfBlockedUntil($supply, monthsAgo()),
+        fn () => $client->reactiveDataBlockedUntilOf($supply, monthsAgo()),
         fn () => $client->rememberReactiveData(new DateTimeImmutable('-1 hour'), Cups::fromString(CUPS), '2', monthsAgo()),
         fn () => $client->rememberReactiveDataOf(new DateTimeImmutable('-1 hour'), $supply, monthsAgo()),
     ] as $call) {

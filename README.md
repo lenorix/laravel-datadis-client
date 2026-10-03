@@ -203,10 +203,10 @@ Datadis refuses an identical consumption or maximum power query for 24 hours, an
 A refused repeat carries the answer: `RepetitionWindowException::$startDate` and `$endDate` are the months the refused query asked for, whoever refused it: they tell a daily refresh, whose range the client picks, exactly which months it did not get. When the package refused the query, `$availableAt` is when the same query is allowed again, and `$lastAttemptAt` when it was last sent (both are `null` when Datadis itself answered with a 429). Its message says it too, so the log line shows it. To look without sending or claiming anything (a command, a screen), ask the client:
 
 ```php
-$until = $client->consumptionDataOfBlockedUntil($supply, $month);   // ?DateTimeImmutable, null when it may be sent now
+$until = $client->consumptionDataBlockedUntilOf($supply, $month);   // ?DateTimeImmutable, null when it may be sent now
 ```
 
-`maxPowerOfBlockedUntil()` and `reactiveDataOfBlockedUntil()` do the same. A job should call and catch the exception instead: that decides in one step.
+`maxPowerBlockedUntilOf()` and `reactiveDataBlockedUntilOf()` do the same. A job should call and catch the exception instead: that decides in one step.
 
 ### See what the guard does
 

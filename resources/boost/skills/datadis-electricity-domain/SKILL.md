@@ -54,7 +54,7 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 | 6.3TD | 72.5 kV or more and below 145 kV | 6 | 6 |
 | 6.4TD | 145 kV or more | 6 | 6 |
 
-- `$contract->tariff()` returns an `AccessTariff` or `null` when it is unsure. Datadis sends `accessFare` as free text (`BAJA TENSION y POTENCIA <= 15 kW`), so the client reads its shape and checks it against the contracted powers. Never match the text yourself.
+- `$contract->tariff()` returns an `AccessTariff` or `null` when it is unsure. Datadis sends `accessFare` as free text (`BAJA TENSION y POTENCIA <= 15 kW`), so the client reads its shape, and `codeFare` when Datadis sends it, and checks it against the contracted powers. Never match the text yourself: to read it your own way give `tariff()` a resolver (see `datadis-development`).
 - `contractedPowerkW` has one value per power period: 2 values for 2.0TD, 6 for the others. If the number disagrees with the text, the tariff is `null`.
 - In the six-period tariffs the Circular requires the contracted power not to decrease from P1 to P6 (art. 6.2), but real Datadis data has broken the rule: do not enforce it.
 - `codeFare` is the CNMC code of the tariff and is separate from `accessFare`.
