@@ -11,6 +11,7 @@ use Lenorix\DatadisClient\DatadisConfig;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Http\GuzzleClientFactory;
 use Psr\Http\Client\ClientInterface;
+use SensitiveParameter;
 
 /**
  * The HTTP client of an account. The configuration and the HTTP factory are taken from the container on every call, never
@@ -36,7 +37,7 @@ final class HttpClients
      *
      * @throws ConfigurationException when the stack, the options or the retries are wrong
      */
-    public function make(array $settings): ClientInterface
+    public function make(#[SensitiveParameter] array $settings): ClientInterface
     {
         $config = DatadisConfig::fromArray($settings);
         $settingsOf = $this->app->make(Config::class);

@@ -44,7 +44,8 @@ class LaravelDatadisClientServiceProvider extends PackageServiceProvider
 
         // A repeated query is refused before anything is sent: expected under a scheduler, not an error.
         // This runs after the application's own `withExceptions()`, so `report_level` => null leaves its setting alone.
-        // It never throws: a bad level is reported by account() and publicApi(), and ignored here.
+        // It never throws: a bad level is reported by account() and publicApi(), and ignored here. The level is read once, when the
+        // handler is first resolved: a `report_level` set afterwards (in a test) is validated on every call but does not move it.
         $this->callAfterResolving(ExceptionHandler::class, function (ExceptionHandler $handler): void {
             try {
                 $level = $this->app->make(LaravelDatadisClient::class)->reportLevel();

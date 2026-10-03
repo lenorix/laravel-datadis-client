@@ -8,13 +8,13 @@ use Closure;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
-use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
-use Lenorix\LaravelDatadisClient\Support\LaravelClock;
 use Psr\Clock\ClockInterface;
+use SensitiveParameter;
+use Throwable;
 
 /**
  * Runs the import of an earlier attempt into the guard with nobody else importing for the account: the ledger keeps the
@@ -33,12 +33,6 @@ final class Importer
         private readonly ClockInterface $clock,
     ) {}
 
-    /** An importer with its own collaborators, for what is not the manager (a test): they keep nothing, so it makes no difference. */
-    public static function for(Application $app): self
-    {
-        return new self(new AccountSettings($app), new GuardLedgers($app), new ReportLevel($app), new LaravelClock);
-    }
-
     /**
      * @template T
      *
@@ -47,7 +41,7 @@ final class Importer
      *
      * @throws InvalidArgumentException when the account is not configured
      * @throws ConfigurationException when its settings or the cache are wrong
-     * @throws LedgerUnavailableException when another import of the account does not finish
+     * @throws LedgerUnavailableException when another import of the account does not finish, or the cache fails taking its lock
      */
     public function run(?string $account, Closure $import): mixed
     {
@@ -59,15 +53,31 @@ final class Importer
             return $import($client);
         }
 
+        // Taking the lock is the part that waits and that can fail: a busy lock, or the cache itself. The import runs once it is held.
         try {
-            return $provider->lock($this->lockName($this->accounts->username($account)), 30)->block(2, fn () => $import($client));
+            $lock = $provider->lock($this->lockName($this->accounts->username($account)), 30);
+            $lock->block(2);
         } catch (LockTimeoutException $e) {
             throw new LedgerUnavailableException('Another import did not finish: import the history from one process.', previous: $e);
+        } catch (ConfigurationException|InvalidArgumentException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            throw new LedgerUnavailableException('The lock of the import could not be taken: the cache failed.', previous: $e);
+        }
+
+        try {
+            return $import($client);
+        } finally {
+            try {
+                $lock->release();
+            } catch (Throwable) {
+                // The import is done; the lock lets go by itself after thirty seconds, and a cache that fails now says nothing new.
+            }
         }
     }
 
     /** The name of the lock of an account: a keyed hash of its username, so that the NIF is in no key of the cache. */
-    public function lockName(string $username): string
+    public function lockName(#[SensitiveParameter] string $username): string
     {
         return 'datadis_import_'.substr(hash_hmac('sha256', $username, $this->guard->secret()), 0, 40);
     }

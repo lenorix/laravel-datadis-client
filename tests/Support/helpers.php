@@ -5,8 +5,11 @@ use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\LaravelDatadisClient\Internal\AccountSettings;
 use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\Internal\Importer;
+use Lenorix\LaravelDatadisClient\Internal\ReportLevel;
+use Lenorix\LaravelDatadisClient\Support\LaravelClock;
 use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 // A literal, not FakesDatadis::CUPS: a constant here would load that class while Pest boots, before a mutation run can replace it
@@ -65,5 +68,11 @@ function heldTime(Closure $month): ?int
 /** The key of the lock an import takes for the default account: a keyed hash of its username, never the NIF. */
 function importLockName(): string
 {
-    return Importer::for(app())->lockName('00000000T');
+    return importer()->lockName('00000000T');
+}
+
+/** An importer wired as the manager wires its own: the classes keep nothing, so a second set makes no difference. */
+function importer(): Importer
+{
+    return new Importer(new AccountSettings(app()), new GuardLedgers(app()), new ReportLevel(app()), new LaravelClock);
 }

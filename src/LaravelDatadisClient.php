@@ -6,7 +6,6 @@ namespace Lenorix\LaravelDatadisClient;
 
 use DateTimeInterface;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Http\Client\Factory as Http;
 use InvalidArgumentException;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\DatadisConfig;
@@ -34,7 +33,8 @@ use Psr\Clock\ClockInterface;
  * includes the operations that change data (authorizations, partner users), which the client offers on purpose.
  *
  * It only decides what to build and hands the rest to small internal classes (the settings of an account, its HTTP client,
- * the guard's cache and ledger, the imports). A facade holds this object for the whole process, so none of them keeps the
+ * the guard's cache and ledger, the imports). The facade keeps the instance it first made for as long as the process lives (the
+ * commands and the container bindings make their own, which is harmless since none keeps anything), so none of them holds the
  * configuration, the cache, the HTTP factory or the event dispatcher: each takes them from the container on every call, and
  * `Http::fake()` or `Event::fake()` set after it was built still apply.
  *

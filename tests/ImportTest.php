@@ -7,11 +7,12 @@ use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
+use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\DatadisClient\Exceptions\TransportException;
 use Lenorix\DatadisClient\Exceptions\UnsupportedOperationException;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
-use Lenorix\LaravelDatadisClient\Internal\Importer;
+use Lenorix\LaravelDatadisClient\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('sends nothing when it imports', function () {
@@ -66,7 +67,7 @@ it('imports on a cache repository that is not Laravel\'s, without a lock', funct
 });
 
 it('gives an import a client that cannot send, whatever the environment says', function () {
-    $client = (fn () => $this->clientFor(null))->call(Importer::for(app()));
+    $client = (fn () => $this->clientFor(null))->call(importer());
 
     // Not a login, not a data query: the transport is the one that throws ("An import never sends a request"), so nothing can reach Datadis or Http::fake().
     expect(fn () => $client->checkLogin())->toThrow(TransportException::class, 'LogicException');   // the client reports the transport's failure
@@ -125,7 +126,7 @@ it('refuses to remember a reactive energy query for an account on API v1, which 
 });
 
 it('names the import lock of an account after a keyed hash of its username, forty hex digits long', function () {
-    $importer = Importer::for(app());
+    $importer = importer();
 
     $name = $importer->lockName('00000000T');
 
@@ -142,5 +143,79 @@ it('keeps the name of the import lock stable, so two versions of the package tha
     config()->set('datadis-client.ledger.key', 'my own secret of enough bytes');
 
     // A golden value: if the name changes, a worker on the old version and one on the new would not share the lock.
-    expect((Importer::for(app()))->lockName('00000000T'))->toBe('datadis_import_2e8e861723a567b3ebdc304365f6dadda520681a');
+    expect((importer())->lockName('00000000T'))->toBe('datadis_import_2e8e861723a567b3ebdc304365f6dadda520681a');
+});
+
+/** An array store whose lock cannot be taken: the cache is down. */
+class LockDownStore extends ArrayStore
+{
+    public function lock($name, $seconds = 0, $owner = null)
+    {
+        throw new RuntimeException('redis down');
+    }
+}
+
+/** An array store whose lock is taken, and cannot be released: the cache goes down once the import is done. */
+class ReleaseDownStore extends ArrayStore
+{
+    public function lock($name, $seconds = 0, $owner = null)
+    {
+        return new class($this, $name, $seconds, $owner) extends ArrayLock
+        {
+            public function release()
+            {
+                throw new RuntimeException('redis went down after the import');
+            }
+        };
+    }
+}
+
+it('says the cache failed when it cannot take the import lock, not a bare exception of the store', function () {
+    Cache::extend('lockdown', fn () => Cache::repository(new LockDownStore));
+    config()->set('cache.stores.lockdown', ['driver' => 'lockdown']);
+    config()->set('cache.default', 'lockdown');
+
+    try {
+        Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour'));
+    } catch (LedgerUnavailableException $e) {
+        expect($e->getMessage())->toContain('cache failed');
+        expect($e->getPrevious())->toBeInstanceOf(RuntimeException::class);
+
+        return;
+    }
+
+    throw new LogicException('Expected a LedgerUnavailableException.');
+});
+
+it('does not fail an import that is done because the lock could not be released', function () {
+    Cache::extend('releasedown', fn () => Cache::repository(new ReleaseDownStore));
+    config()->set('cache.stores.releasedown', ['driver' => 'releasedown']);
+    config()->set('cache.default', 'releasedown');
+
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
+});
+
+it('keeps the credentials out of the arguments of a stack trace, which error pages and trackers print', function () {
+    $before = ini_set('zend.exception_ignore_args', '0');   // the PHP default: the arguments are in the trace
+    $traceOf = function (Closure $fails): string {
+        try {
+            $fails();
+        } catch (Throwable $e) {
+            return json_encode(array_map(fn ($frame) => $frame['args'] ?? null, $e->getTrace()), JSON_PARTIAL_OUTPUT_ON_ERROR);
+        }
+
+        throw new LogicException('Expected a failure.');
+    };
+
+    // The settings of an account, with the password, reach a method that throws for a wrong HTTP stack.
+    config()->set('datadis-client.accounts.default.password', 'HUNTER2PASS');
+    config()->set('datadis-client.http.stack', 'bogus');
+    expect($traceOf(fn () => app(LaravelDatadisClient::class)->account()))->not->toContain('HUNTER2PASS');
+
+    // The username (a NIF) reaches the lock name, which throws when there is no secret to key it with.
+    config()->set('datadis-client.ledger.key', null);
+    config()->set('app.key', '');
+    expect($traceOf(fn () => importer()->lockName('12345678Z')))->not->toContain('12345678Z');
+
+    ini_set('zend.exception_ignore_args', $before);
 });
