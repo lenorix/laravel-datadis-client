@@ -66,7 +66,7 @@ it('imports on a cache repository that is not Laravel\'s, without a lock', funct
 });
 
 it('gives an import a client that cannot send, whatever the environment says', function () {
-    $client = (fn () => $this->clientFor(null))->call(new Importer(app()));
+    $client = (fn () => $this->clientFor(null))->call(Importer::for(app()));
 
     // Not a login, not a data query: the transport is the one that throws ("An import never sends a request"), so nothing can reach Datadis or Http::fake().
     expect(fn () => $client->checkLogin())->toThrow(TransportException::class, 'LogicException');   // the client reports the transport's failure
@@ -125,7 +125,7 @@ it('refuses to remember a reactive energy query for an account on API v1, which 
 });
 
 it('names the import lock of an account after a keyed hash of its username, forty hex digits long', function () {
-    $importer = new Importer(app());
+    $importer = Importer::for(app());
 
     $name = $importer->lockName('00000000T');
 
@@ -142,5 +142,5 @@ it('keeps the name of the import lock stable, so two versions of the package tha
     config()->set('datadis-client.ledger.key', 'my own secret of enough bytes');
 
     // A golden value: if the name changes, a worker on the old version and one on the new would not share the lock.
-    expect((new Importer(app()))->lockName('00000000T'))->toBe('datadis_import_2e8e861723a567b3ebdc304365f6dadda520681a');
+    expect((Importer::for(app()))->lockName('00000000T'))->toBe('datadis_import_2e8e861723a567b3ebdc304365f6dadda520681a');
 });

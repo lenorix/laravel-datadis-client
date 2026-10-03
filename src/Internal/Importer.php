@@ -14,6 +14,7 @@ use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\LaravelDatadisClient\Support\LaravelClock;
+use Psr\Clock\ClockInterface;
 
 /**
  * Runs the import of an earlier attempt into the guard with nobody else importing for the account: the ledger keeps the
@@ -25,20 +26,17 @@ use Lenorix\LaravelDatadisClient\Support\LaravelClock;
  */
 final class Importer
 {
-    private readonly AccountSettings $accounts;
+    public function __construct(
+        private readonly AccountSettings $accounts,
+        private readonly GuardLedgers $guard,
+        private readonly ReportLevel $reportLevel,
+        private readonly ClockInterface $clock,
+    ) {}
 
-    private readonly GuardLedgers $guard;
-
-    private readonly ReportLevel $reportLevel;
-
-    private readonly LaravelClock $clock;
-
-    public function __construct(Application $app)
+    /** An importer with its own collaborators, for what is not the manager (a test): they keep nothing, so it makes no difference. */
+    public static function for(Application $app): self
     {
-        $this->accounts = new AccountSettings($app);
-        $this->guard = new GuardLedgers($app);
-        $this->reportLevel = new ReportLevel($app);
-        $this->clock = new LaravelClock;
+        return new self(new AccountSettings($app), new GuardLedgers($app), new ReportLevel($app), new LaravelClock);
     }
 
     /**

@@ -66,9 +66,10 @@ class LaravelDatadisClient
         $this->http = new HttpClients($app);
         $this->guard = new GuardLedgers($app);
         $this->reportLevel = new ReportLevel($app);
-        $this->importer = new Importer($app);
         // The application's time (`now()`, `travelTo()`), not the system's: the guard, the daily range and the token follow it.
         $this->clock = new LaravelClock;
+        // The importer is wired with the manager's own, so there is one place where the classes are put together.
+        $this->importer = new Importer($this->accounts, $this->guard, $this->reportLevel, $this->clock);
     }
 
     /**

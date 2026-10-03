@@ -63,5 +63,5 @@ function heldTime(Closure $month): ?int
 /** The key of the lock an import takes for the default account: a keyed hash of its username, never the NIF. */
 function importLockName(): string
 {
-    return (new Importer(app()))->lockName('00000000T');
+    return Importer::for(app())->lockName('00000000T');
 }
