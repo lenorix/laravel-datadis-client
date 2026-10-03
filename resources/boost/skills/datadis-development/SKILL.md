@@ -18,6 +18,8 @@ Use it when code calls `DatadisClient` or `PublicApiClient`, or computes somethi
 5. Read `$result->records`; check `isEmpty()` and `distributorErrors`.
 6. Store the whole result, `raw` included: the same query cannot be asked again for 24 hours.
 
+**Find the supply once per run.** `findSupply()` reads the supplies list on every call, so a job that reads the contract, the consumption and the maximum power should call it once and pass the same `$supply` to every `...Of()`: five calls to Datadis instead of seven. Do not keep a `Supply` for long: the contract dates (`validDateFrom`, `validDateTo`) move, and a stale one makes the client refuse a range it should allow, or allow one it should refuse. If you store a row's `raw` and rebuild it with `Supply::fromRow($row, $zone)`, refresh it from the supplies list periodically.
+
 For supplies of someone who authorized the account use `$client->forHolder(Nif::fromString($nif))`, and never pass the account's own NIF as `authorizedNif`.
 
 ## Calls
@@ -38,7 +40,7 @@ $peak     = $client->getLatestMaxPowerOf($supply);                    // the sam
 $reactive = $client->getReactiveDataOf($supply, $from, $to);          // API v2 only
 $client->getSupplies(); $client->getDistributorsWithSupplies(); $client->getGroups();   // getGroups: API v2 only
 $client->listAuthorization();                                         // read only
-$client->checkLogin();                                                // logs in or takes the cached token; when it lasts, without reading data
+$client->checkLogin();                                                // logs in or takes the cached token; when it lasts, without reading data (see below)
 $client->assertServedRange($from, $to);                              // refuses a range Datadis would refuse, before any login
 $until = $client->consumptionDataOfBlockedUntil($supply, $from);      // ?DateTimeImmutable: until when the ledger refuses it, nothing sent or claimed
 ```
@@ -69,6 +71,8 @@ $client->partnerUserList(); $client->partnerAgreementDate();      // partner rea
 - Artisan: `datadis:supplies`, `datadis:contract {cups}`, `datadis:consumption {cups} {YYYY-MM} [--to=] [--quarter-hourly]`, `datadis:authorizations`, `datadis:authorize {nif}`, `datadis:authorization:cancel {nif}`. All take `--account`. The reading ones (`supplies`, `contract`, `consumption`) also take `--holder`; the authorization commands act for the account itself and have none (`datadis:authorizations` takes `--owner`). A bad input fails before anything is sent. Exit code 0 is a success (an empty answer, or a distributor error beside real data, only warns); 1 is a bad input, a Datadis error, or a distributor failure with no data. A script can rely on it.
 
 ## Reading the results
+
+`checkLogin()` (from the client's documentation, "Login and `checkLogin()`" in its quirks and rules): it sends no request when the cached token is still valid and one login otherwise, and exactly one with `fresh: true`. A login never costs a data query. A fresh check replaces the token in the cache every worker shares, so they all use the new one, and only a failed check leaves the cache empty. The client's documentation does not say whether Datadis invalidates the previous token when it issues a new one: do not rely on either behaviour.
 
 Every list call returns an `ApiResult`: `records`, `isEmpty()`, `distributorErrors`, `isEmptyBecauseOfErrors()` and `skippedRows`. Each record keeps the untouched row in `raw`.
 
