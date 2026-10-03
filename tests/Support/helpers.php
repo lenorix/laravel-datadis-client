@@ -105,7 +105,7 @@ function supplyOf(DatadisClient $client)
 /** The time the guard holds for a maximum power query of the default account, or null. */
 function heldTime(Closure $month): ?int
 {
-    $ledger = (fn () => $this->ledger())->call(app(Manager::class));
+    $ledger = (fn () => $this->ledger('default'))->call(app(Manager::class));
 
     return $ledger->lastAttempt('00000000T', ['cups' => CUPS, 'distributorCode' => '2', 'startDate' => $month()->format(), 'endDate' => $month()->format(), 'authorizedNif' => null])?->getTimestamp();
 }

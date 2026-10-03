@@ -98,7 +98,7 @@ it('keeps the original time of the query, not the moment it was remembered', fun
     $sentAt = new DateTimeImmutable('-20 hours');
     Datadis::rememberReactive(Cups::fromString(CUPS), '2', monthsAgo(2), at: $sentAt);
 
-    $ledger = (fn () => $this->ledger())->call(app(Manager::class));
+    $ledger = (fn () => $this->ledger('default'))->call(app(Manager::class));
     $last = $ledger->lastAttempt('00000000T', ['cups' => CUPS, 'distributorCode' => '2', 'startDate' => monthsAgo(2)->format(), 'endDate' => monthsAgo(2)->format(), 'authorizedNif' => null]);
 
     expect($last?->getTimestamp())->toBe($sentAt->getTimestamp());
