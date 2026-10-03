@@ -1,0 +1,10 @@
+# The default rules, plus one exception: the tests set application keys of fifteen and sixteen characters to check where the
+# guard's secret is too short. They are placeholders, never a real key, and the generic rule takes them for one.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Placeholder application keys of the guard's secret tests"
+condition = "AND"
+paths = ['''tests/ConfigHardeningTest\.php''']
+regexes = ['''0123456789abcde(f)?''']
