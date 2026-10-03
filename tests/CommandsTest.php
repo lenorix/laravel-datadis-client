@@ -567,3 +567,16 @@ it('keeps a backslash at the end of a text, which would escape the closing tag o
     expect($code)->toBe(0);
     expect($output)->toContain('C:\\temp\\'.PHP_EOL);
 });
+
+it('keeps a backslash before a > in a table cell, which the console formatter would take for an escape', function () {
+    fakeForCommands([
+        '*/get-supplies*' => Http::response(['supplies' => [[
+            'cups' => CUPS, 'distributor' => 'a\\>b', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
+        ]], 'distributorError' => []]),
+    ]);
+
+    [$code, $output] = runCommand('datadis:supplies');
+
+    expect($code)->toBe(0);
+    expect($output)->toContain('a\\›b');   // the backslash stays, and the > gets a look-alike
+});

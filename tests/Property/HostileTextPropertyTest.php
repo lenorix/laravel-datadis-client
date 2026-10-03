@@ -11,7 +11,7 @@ use Lenorix\LaravelDatadisClient\Tests\Support\FormatsOnceOutputStyle;
 /*
  * Text from Datadis or from the user goes to the console: a distributor's name, an error description, an answer to an
  * authorization, an account name. Whatever it looks like (console tags, unbalanced brackets, Unicode), the command must
- * not crash, must keep its exit code and must show the text: raw on a line, with `<` swapped for `‹` in a table cell.
+ * not crash, must keep its exit code and must show the text: raw on a line, and in a table cell with `<` swapped for `‹` and a `>` after a backslash for `›`.
  */
 function hostileText(): Generator
 {
@@ -26,7 +26,7 @@ function hostileText(): Generator
 it('never crashes on hostile text from Datadis or the user, and shows it', function () {
     app()->bind(OutputStyle::class, fn ($app, array $parameters) => new FormatsOnceOutputStyle($parameters['input'], $parameters['output']));
 
-    $this->limitTo(min(iterations(), 100))->forAll(hostileText())->when(fn (string $text) => trim($text) !== '')->disableShrinking()->then(function (string $text) {
+    $this->limitTo(iterations())->forAll(hostileText())->when(fn (string $text) => trim($text) !== '')->disableShrinking()->then(function (string $text) {
         FakesDatadis::fake([
             '*/get-supplies*' => Http::response(['supplies' => [[
                 'cups' => FakesDatadis::CUPS, 'distributor' => $text, 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
@@ -39,7 +39,7 @@ it('never crashes on hostile text from Datadis or the user, and shows it', funct
         $code = Artisan::call('datadis:supplies');
         $output = Artisan::output();
         expect($code)->toBe(0);
-        expect(str_contains($output, str_replace('<', '‹', $text)))->toBeTrue('the table cell of '.json_encode($text).' in '.json_encode($output));
+        expect(str_contains($output, str_replace(['<', '\\>'], ['‹', '\\›'], $text)))->toBeTrue('the table cell of '.json_encode($text).' in '.json_encode($output));
         expect(str_contains($output, 'said: '.$text))->toBeTrue('the warning of '.json_encode($text).' in '.json_encode($output));
 
         // The answer of a write.

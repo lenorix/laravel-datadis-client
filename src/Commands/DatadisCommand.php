@@ -44,7 +44,8 @@ abstract class DatadisCommand extends Command
      * that formats twice (the one Laravel's skeleton installs for AI agents) undoes any escape. A backslash is a
      * hazard too: before the closing tag of the style it escapes it, and the text loses its last character. So text with
      * a `<` or a `\` is written raw, unformatted, and the cells of a table, which cannot be, have their `<` swapped for
-     * a look-alike that cannot open a tag.
+     * a look-alike that cannot open a tag, and a backslash before a `>` (which the formatter would take for an escape and
+     * drop) keeps its backslash and gets a look-alike of the `>`.
      */
 
     public function line($string, $style = null, $verbosity = null)
@@ -81,7 +82,7 @@ abstract class DatadisCommand extends Command
      */
     public function table($headers, $rows, $tableStyle = 'default', array $columnStyles = [])
     {
-        $neutral = static fn (mixed $cell): mixed => is_string($cell) ? str_replace('<', '‹', $cell) : $cell;
+        $neutral = static fn (mixed $cell): mixed => is_string($cell) ? str_replace(['<', '\\>'], ['‹', '\\›'], $cell) : $cell;
 
         parent::table($headers, array_map(static fn (mixed $row): mixed => is_array($row) ? array_map($neutral, $row) : $row, $rows instanceof Arrayable ? $rows->toArray() : $rows), $tableStyle, $columnStyles);
     }
