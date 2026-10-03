@@ -102,7 +102,7 @@ The last three are `InvalidRequestException`s: catch the specific type when you 
 | `ServiceUnavailableException`, `TransportException` | Datadis or the network failed | later; a data query that may have arrived counts as used today |
 | `PageLimitReachedException` | `apiSearchAll()` or `apiSearchAutoAll()` stopped at `maxPages` with a full last page, after the last record | more records may remain: it carries `nextPage` and `skippedRows` |
 
-After a `401` the client logs in again and repeats only the calls that are safe to repeat: a guarded query, `newAuthorization()`, `cancelAuthorization()` and `partnerDeleteUser()` are not sent again, and fail with an `AuthenticationException` whose `requestSent` is `true`. A `RepetitionWindowException` from the ledger carries `availableAt` (when the query is allowed again) and `lastAttemptAt`.
+After a `401` the client logs in again and repeats only the calls that are safe to repeat: a guarded query, `newAuthorization()`, `cancelAuthorization()` and `partnerDeleteUser()` are not sent again, and fail with an `AuthenticationException` whose `requestSent` is `true`. A `RepetitionWindowException` carries the months the refused query asked for, `startDate` and `endDate`, whoever refused it (the ledger or Datadis's own 429). When the package refused it, it also carries `availableAt` (when the query is allowed again) and `lastAttemptAt`; both are `null` for a 429.
 
 `Cups`, `Nif` and `Month` throw `InvalidArgumentException` on malformed input: check with `Cups::isValid()` and `Nif::isValid()` when it comes from a user.
 

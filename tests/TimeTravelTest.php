@@ -58,3 +58,23 @@ it('keeps the token for as long as the application time says, and logs in again 
     app(DatadisClient::class)->getSupplies();
     expect(logins())->toHaveCount(2);
 });
+
+it('tells which months a refused daily refresh did not get', function () {
+    fakeEverything();
+    $this->travelTo(Carbon::parse('2026-10-03 04:00', 'Europe/Madrid'));   // an odd day: the previous month and the current one
+    $client = app(DatadisClient::class);
+    $supply = supplyOf($client);
+
+    $client->getLatestConsumptionDataOf($supply);
+
+    try {
+        $client->getLatestConsumptionDataOf($supply);   // the same day again
+    } catch (RepetitionWindowException $e) {
+        expect([$e->startDate->format(), $e->endDate->format()])->toBe(['2026/09', '2026/10']);
+        expect($e->availableAt)->not->toBeNull();
+
+        return;
+    }
+
+    throw new LogicException('Expected a RepetitionWindowException.');
+});

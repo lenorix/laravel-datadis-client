@@ -151,8 +151,16 @@ class RefreshSupply implements ShouldQueue
         try {
             // the current month today, the previous one and the current one tomorrow: never yesterday's query
             $result = $client->getLatestConsumptionDataOf($supply);
-        } catch (NoDataException|RepetitionWindowException|NothingToRefreshException) {
-            return; // nothing yet, already asked today, or the contract has nothing to refresh this month
+        } catch (NoDataException|NothingToRefreshException) {
+            return; // nothing yet, or the contract has nothing to refresh this month
+        } catch (RepetitionWindowException $e) {
+            // Refused, so these months did not arrive: `startDate` and `endDate` say which, also for Datadis's own 429. Mark each as
+            // not refreshed, so a closed month missed on a two-month day is not hidden behind the current month's stamp.
+            foreach ($e->startDate !== null && $e->endDate !== null ? Month::sequence($e->startDate, $e->endDate) : [] as $month) {
+                // mark $month->format() as pending in your own record
+            }
+
+            return;
         }
 
         // persist $result->records and each ->raw
@@ -165,6 +173,8 @@ PlanSupplySync::dispatch($cups, months: 24);   // once: the whole history; start
 
 Schedule::job(new RefreshSupply($cups))->timezone('Europe/Madrid')->dailyAt('04:00');
 ```
+
+A refused run did not get its months, and the exception says which: `$e->startDate` and `$e->endDate` (both included). Compare each month against the stamp of its own last refresh, never only the current month's. `availableAt` and `lastAttemptAt` are set when the package refused the query and are `null` for a Datadis 429, while the months are set in both cases.
 
 `getLatestConsumptionDataOf()` alternates its range by the civil day in Madrid, so a run at the same time every day is not refused: yesterday's range differs from today's (except in the month the contract starts, below). Do not ask the same range every day instead: the guard keeps a query for 24 hours and 10 minutes (a margin for clock differences with Datadis), and a job that repeats it at the same time each day is refused locally every other run. A second run on the same day is refused like any repeat, so schedule one a day. Schedule it in Madrid time, between about 04:00 and 22:00 (`->timezone('Europe/Madrid')` if the application is in another zone): the daily calls follow the Madrid calendar day, and a job fixed in UTC can run twice on one day, or skip one, when the clocks change. Every other day the answer holds two months: split it by month (`$reading->start`) before adding readings up. One exception, from the client: in the month the contract starts there is no previous month to alternate with, so the range is that month every day and the run of the next day is refused. The job above catches `RepetitionWindowException` for that: the month refreshes every second day until the next one starts. `getLatestMaxPowerOf()` does the same for maximum power; reactive energy shares its guard entry with maximum power, so ask it for closed months only.
 
