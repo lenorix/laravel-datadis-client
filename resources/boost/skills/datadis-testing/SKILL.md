@@ -27,46 +27,22 @@ Two things break it:
 
 ## Faking Datadis
 
-Two helpers: a fake token, and one that answers every endpoint of the client (add the bodies you need to assert on).
+The package ships the helper: `FakesDatadis::fake()` answers every endpoint of the client, read and write, and the login.
 
 ```php
-function fakeJwt(): string
-{
-    $encode = fn (array $claims) => rtrim(strtr(base64_encode(json_encode($claims)), '+/', '-_'), '=');
+use Illuminate\Support\Facades\Http;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
-    // header.payload.signature, with an exp claim 24 hours ahead of the application's time; the signature is never checked
-    return $encode(['alg' => 'HS512']).'.'.$encode(['exp' => now()->addDay()->timestamp]).'.signature';
-}
-
-function fakeDatadis(): void
-{
-    $list = fn (string $key) => Http::response([$key => [], 'distributorError' => []]);
-    $text = fn (string $body) => Http::response($body, 200, ['Content-Type' => 'text/plain']);
-
-    Http::fake([
-        '*/nikola-auth/tokens/login' => fn () => $text(fakeJwt()),   // a closure: a test that travels in time gets a token of its day
-        '*/get-supplies*' => Http::response(['supplies' => [[
-            'cups' => 'ES0000000000000000AA0A', 'distributor' => 'X', 'pointType' => 5,
-            'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
-        ]], 'distributorError' => []]),
-        '*/get-distributors-with-supplies*' => Http::response(['distributorError' => []]),
-        '*/get-contract-detail*' => $list('contract'),
-        '*/get-consumption-data*' => $list('timeCurve'),
-        '*/get-max-power*' => $list('maxPower'),
-        '*/get-reactive-data*' => Http::response(['reactiveEnergy' => [], 'distributorError' => []]),
-        '*/get-groups*' => $list('groups'),
-        '*/list-authorization*' => $list('authorizations'),
-        '*/new-authorization*' => $text('Authorization created'),
-        '*/cancel-authorization*' => $text('Authorization cancelled'),
-        '*/partner-user-list*' => $list('users'),
-        '*/partner-delete-user*' => $text('User unlinked'),
-        '*/partner-agreement-date*' => Http::response(['partnerAgreementDate' => null]),
-        '*/api-public/api-*' => Http::response([]),   // the open data
-    ]);
-}
+FakesDatadis::fake([
+    '*/get-max-power*' => Http::response(['maxPower' => [/* the rows you assert on */], 'distributorError' => []]),
+]);
 ```
 
-- **The login** answers a JWT as text (`fakeJwt()` above). Any `header.payload.signature` with a numeric `exp` claim a few minutes ahead works; the signature is not verified. A token that has expired, or is about to (within about two minutes), is not reused: the client logs in again.
+- **It starts from a fresh HTTP factory.** `Http::fake()` accumulates stubs and the first one that matches wins, so a second fake after a first one is silently ignored. Call `FakesDatadis::fake()` again and the new one replaces the old.
+- **Your answers go first**, so they win over the defaults. Change the default supply with `supply: ['validDateFrom' => '2026/10/01', 'pointType' => 3]`; its CUPS is `FakesDatadis::CUPS`.
+- **A URL nobody answers fails** (`Http::preventStrayRequests()`) instead of reaching Datadis.
+- **It does not touch the cache**: use `cache.default` as `array`, which Laravel empties between tests.
+- **The login** answers a JWT as text, `FakesDatadis::token()`: `iat` is `now()` and `exp` a day later, so a test that travels in time gets a token of its day. Any `header.payload.signature` with a numeric `exp` works; the signature is not verified. A token that has expired, or is about to (within about two minutes), is not reused: the client logs in again.
 - **The paths** end in `-v2` for API v2 (`get-supplies-v2`); the wildcard after the endpoint name covers it and the query string.
 - **Answer keys**: `supplies`, `contract`, `timeCurve`, `maxPower`, `reactiveEnergy`, `authorizations`, `groups`, `users`, always beside `distributorError`. The writes answer plain text.
 - **Make the supply queryable**: a CUPS as `ES` plus 16 digits plus 2 letters, a `distributorCode` and a `pointType`.
@@ -76,7 +52,7 @@ function fakeDatadis(): void
 - **The 24 hour guard**: resolve the client twice (`app(DatadisClient::class)`), ask the same consumption twice, expect `RepetitionWindowException` the second time and only one consumption request: `Http::recorded(...)`.
 - **Failures**: `Http::response('', 404)` gives `NoDataException`, a `503` gives `ServiceUnavailableException`; assert `requestSent`. Harmless reads are retried: use `Http::sequence()->push('', 503)->push($ok)`. The retries wait for real (1 and 2 seconds by default), so in tests set `config()->set('datadis-client.http.retries', ['max' => 2, 'base_delay_ms' => 1, 'max_delay_ms' => 1])`, or `['max' => 0]` where a failed call must fail at once. Data queries and writes are never retried.
 - **Holders**: after `forHolder($nif)` the URL carries `authorizedNif=<NIF>`; it is omitted for the account's own NIF.
-- **Several days**: the package takes its time from the application, so `$this->travelTo(...)` (or `Carbon::setTestNow()`) moves the 24 hour guard, the range of `getLatest...Of()` and the life of the token together. Run a daily job over three days at the same Madrid time and each range differs from the day before, provided the fake supply's contract started before the current month (in the month a contract starts the range is that month every day: the exception of the sync skill; the `fakeDatadis()` supply starts in 2020). Time travel moves the guard through its window only on a cache whose expiry follows `now()` (`array`, `file`, `database`): on Redis or Memcached a held key keeps its own time and the guard still refuses it after the travelled window, so use `array` in the tests that travel. Build the months you ask for from the travelled time, not from the real one: a month in the future is refused.
+- **Several days**: the package takes its time from the application, so `$this->travelTo(...)` (or `Carbon::setTestNow()`) moves the 24 hour guard, the range of `getLatest...Of()` and the life of the token together. Run a daily job over three days at the same Madrid time and each range differs from the day before, provided the fake supply's contract started before the current month (in the month a contract starts the range is that month every day: the exception of the sync skill; the default supply of `FakesDatadis` starts in 2020). Time travel moves the guard through its window only on a cache whose expiry follows `now()` (`array`, `file`, `database`): on Redis or Memcached a held key keeps its own time and the guard still refuses it after the travelled window, so use `array` in the tests that travel. Build the months you ask for from the travelled time, not from the real one: a month in the future is refused.
 - **Another account**: set `datadis-client.accounts.other`, then `LaravelDatadisClient::account('other')`.
 - **Commands**: `Artisan::call('datadis:supplies')` and read `Artisan::output()`. A malformed input exits with code 1 and records no request.
 - **Numbers**: compare decimal strings, never floats.

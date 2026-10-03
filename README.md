@@ -302,16 +302,19 @@ The client holds a password and cannot be serialised. Type-hint it in `handle()`
 In the test environment (`APP_ENV=testing`) the calls go through Laravel's `Http` client, so fake Datadis as any other service:
 
 ```php
-Http::preventStrayRequests();   // a URL that stops matching must fail, not reach Datadis
-Http::fake([
-    '*/nikola-auth/tokens/login' => Http::response($jwt, 200, ['Content-Type' => 'text/plain']),
-    '*/api-private/api/get-supplies*' => Http::response(['supplies' => [/* rows */], 'distributorError' => []]),
+use Illuminate\Support\Facades\Http;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
+
+FakesDatadis::fake([
+    '*/get-max-power*' => Http::response(['maxPower' => [/* rows */], 'distributorError' => []]),   // yours first
 ]);
 ```
 
+`FakesDatadis::fake()` answers every endpoint of the client and the login, starts from a fresh HTTP factory (`Http::fake()` accumulates stubs, and the first one that matches wins, so a second fake would be ignored), puts your answers before the defaults, and fails on a URL nobody answers instead of reaching Datadis. `supply: [...]` changes fields of its default supply, and `FakesDatadis::token()` is a fake token for a test that needs one.
+
 - Do not set `DATADIS_HTTP_STACK=guzzle` in a `.env` your tests load: the package refuses to build the client, because a test would reach the real Datadis.
 - Harmless reads are retried with real waits (1 and 2 seconds by default). In tests that fail a call, set `config()->set('datadis-client.http.retries', ['max' => 0])`, or the delays to 1 ms (`'base_delay_ms' => 1, 'max_delay_ms' => 1`), so they do not sleep.
-- The package takes its time from the application, so `travelTo()` and `Carbon::setTestNow()` move the guard, the range of the daily refresh and the life of the token together: a test can run a daily job over several days. Give the fake token an `exp` from `now()` (`now()->addDay()->timestamp`), not from `time()`, and answer the login with a closure (`'*/nikola-auth/tokens/login' => fn () => Http::response(...)`): a fixed body stays expired once the test has travelled. This works on a cache whose expiry follows `now()` (`array`, `file`, `database`); on Redis or Memcached a held key keeps its own time, and the guard still refuses it after the travelled window, so run the tests that travel on `array`.
+- The package takes its time from the application, so `travelTo()` and `Carbon::setTestNow()` move the guard, the range of the daily refresh and the life of the token together: a test can run a daily job over several days. `FakesDatadis` already answers the login with a token of the application's time. If you fake the login yourself, give the token an `exp` from `now()` (`now()->addDay()->timestamp`), not from `time()`, and answer with a closure (`'*/nikola-auth/tokens/login' => fn () => Http::response(...)`): a fixed body stays expired once the test has travelled. This works on a cache whose expiry follows `now()` (`array`, `file`, `database`); on Redis or Memcached a held key keeps its own time, and the guard still refuses it after the travelled window, so run the tests that travel on `array`.
 - To fake Datadis outside `testing`, set `DATADIS_HTTP_STACK=laravel`, or give a Guzzle mock handler with `config()->set('datadis-client.http.options.handler', $handlerStack)`.
 
 ## Configuration
