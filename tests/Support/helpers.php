@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
@@ -10,19 +9,7 @@ use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\Internal\Importer;
 use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
-const CUPS = 'ES0000000000000000AA0A';
-
-function fakeToken(): string
-{
-    $encode = fn (string $json) => rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
-
-    return $encode('{"alg":"HS512"}').'.'.$encode(json_encode(['sub' => 'a', 'iat' => now()->timestamp, 'exp' => now()->addDay()->timestamp])).'.sig';
-}
-
-function fakeDatadis(): void
-{
-    FakesDatadis::fake();
-}
+const CUPS = FakesDatadis::CUPS;
 
 /** A NIF with a valid control letter for any number. */
 function nifOf(int $number): string
@@ -51,12 +38,6 @@ function freshHttp(): void
 {
     FakesDatadis::fake();
     app('cache')->store()->clear();
-}
-
-/** Datadis answering every endpoint of the client: the helper the package ships, so the tests use what an application would. */
-function fakeEverything(): void
-{
-    FakesDatadis::fake();
 }
 
 /** How many guarded requests reached Datadis. */

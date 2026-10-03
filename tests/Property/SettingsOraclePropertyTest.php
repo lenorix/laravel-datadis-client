@@ -13,7 +13,7 @@ use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
  */
 it('settles the username, the password and the API version as the oracle says, whatever the spellings and blanks', function () {
     $value = fn (array $options) => Generators::elements(...$options);
-    $this->limitTo(min(iterations(), 100))->forAll(
+    $this->limitTo(iterations())->forAll(
         $value([null, '', '   ', 'sp-1']),             // services password
         $value([null, '', '   ', nifOf(11)]),          // services username
         $value([null, '', '   ', 'v1', 'v2']),         // services api_version

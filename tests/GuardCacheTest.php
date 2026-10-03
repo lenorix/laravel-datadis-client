@@ -17,9 +17,10 @@ use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('refuses a repeated query across clients through the shared cache', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
 
     app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo());
@@ -31,7 +32,7 @@ it('refuses a repeated query across clients through the shared cache', function 
 });
 
 it('shares the login token between clients through the cache', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
     app(DatadisClient::class)->getSupplies();
@@ -42,7 +43,7 @@ it('shares the login token between clients through the cache', function () {
 
 it('keeps the token in the default cache store of Laravel', function () {
     config()->set('cache.stores.other', ['driver' => 'array']);
-    fakeDatadis();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 
@@ -69,13 +70,13 @@ it('adds to the cache only when the key is absent', function () {
 });
 
 it('counts a consumption query lost in transit as used, so it is not repeated', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
     Http::swap(new Factory);
     Http::preventStrayRequests();
     $attempts = 0;
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => Http::response(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
         '*/get-consumption-data*' => function () use (&$attempts) {
             $attempts++;
 
@@ -97,7 +98,7 @@ it('logs in again when the token it was given has already expired', function () 
     $encode = fn (string $json) => rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
     $expired = $encode('{"alg":"HS512"}').'.'.$encode(json_encode(['sub' => 'a', 'iat' => time() - 200000, 'exp' => time() - 100000])).'.sig';
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::sequence()->push($expired, 200, ['Content-Type' => 'text/plain'])->push(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => Http::sequence()->push($expired, 200, ['Content-Type' => 'text/plain'])->push(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
         '*/get-supplies*' => Http::response(['supplies' => [], 'distributorError' => []]),
     ]);
 
@@ -125,7 +126,7 @@ it('refuses a guarded query without sending it when the cache store cannot be us
             throw new RuntimeException('cache is down');
         }
     }));
-    fakeDatadis();
+    FakesDatadis::fake();
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
     config()->set('cache.stores.broken', ['driver' => 'broken']);
     config()->set('cache.default', 'broken');
@@ -135,7 +136,7 @@ it('refuses a guarded query without sending it when the cache store cannot be us
 });
 
 it('never lets the token or its key reach Laravel\'s cache events', function () {
-    $token = fakeToken();
+    $token = FakesDatadis::token();
     $events = [];
     Event::listen('Illuminate\Cache\Events\*', function (string $name, array $payload) use (&$events) {
         $events[] = [$name, json_encode(array_map(fn ($event) => get_object_vars($event), $payload), JSON_PARTIAL_OUTPUT_ON_ERROR)];

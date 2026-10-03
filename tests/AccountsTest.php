@@ -8,6 +8,7 @@ use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('builds clients for named accounts', function () {
     config()->set('datadis-client.accounts.other', ['username' => '12345678Z', 'password' => 'x']);
@@ -19,7 +20,7 @@ it('builds clients for named accounts', function () {
 it('reads the credentials of the default account from services.datadis first', function () {
     config()->set('datadis-client.accounts.default', ['username' => null, 'password' => null, 'timeout' => 30]);
     config()->set('services.datadis', ['username' => '12345678Z', 'password' => 'from-services']);
-    fakeDatadis();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 
@@ -33,7 +34,7 @@ it('does not apply services.datadis to other accounts', function () {
 });
 
 it('sends the holder on supplies, contract, consumption and power calls, from the facade and the injected client', function (Closure $client) {
-    fakeDatadis();
+    FakesDatadis::fake();
     $holder = $client()->forHolder(Nif::fromString('12345678Z'));
     $supply = $holder->findSupply(Cups::fromString(CUPS));
 
@@ -50,7 +51,7 @@ it('sends the holder on supplies, contract, consumption and power calls, from th
 ]);
 
 it('does not send authorizedNif for the account\'s own supplies', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 
@@ -61,7 +62,7 @@ it('keeps services.datadis on the account named default when another one is the 
     config()->set('datadis-client.default', 'other');
     config()->set('datadis-client.accounts.other', ['username' => '12345678Z', 'password' => 'other-secret']);
     config()->set('services.datadis', ['username' => '00000000T', 'password' => 'services-secret']);
-    fakeDatadis();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 
@@ -71,7 +72,7 @@ it('keeps services.datadis on the account named default when another one is the 
 it('trims the default account name', function () {
     config()->set('datadis-client.accounts.work', ['username' => '12345678Z', 'password' => 'x']);
     config()->set('datadis-client.default', ' work ');
-    fakeDatadis();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 
@@ -83,7 +84,7 @@ it('resolves an account whose name has a dot, and a name that only looks like a 
         'default' => ['username' => '00000000T', 'password' => 'x'],
         'tenant.east' => ['username' => '12345678Z', 'password' => 'y'],
     ]);
-    fakeDatadis();
+    FakesDatadis::fake();
 
     app(Manager::class)->account('tenant.east')->getSupplies();
 
@@ -97,7 +98,7 @@ it('reaches an account with a dot in its name from the public API and the comman
         'default' => ['username' => '00000000T', 'password' => 'x'],
         'tenant.east' => ['username' => '12345678Z', 'password' => 'y'],
     ]);
-    fakeEverything();
+    FakesDatadis::fake();
 
     expect(app(Manager::class)->publicApi('tenant.east'))->toBeInstanceOf(PublicApiClient::class);
 

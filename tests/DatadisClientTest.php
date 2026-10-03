@@ -13,13 +13,14 @@ use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClientServiceProvider;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('binds a client built from the configuration', function () {
     expect(app(DatadisClient::class))->toBeInstanceOf(DatadisClient::class);
 });
 
 it('sends every call through Laravel\'s Http so it can be faked and asserted', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
 
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
 
@@ -28,7 +29,7 @@ it('sends every call through Laravel\'s Http so it can be faked and asserted', f
 });
 
 it('proxies the facade to the default account', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
 
     expect(LaravelDatadisClient::getSupplies()->records)->toHaveCount(1);
     expect(LaravelDatadisClient::account())->toBeInstanceOf(DatadisClient::class);
@@ -36,13 +37,13 @@ it('proxies the facade to the default account', function () {
 
 it('keeps working after Http::fake() replaces the HTTP factory', function () {
     LaravelDatadisClient::account(); // resolves the facade root before the fake
-    fakeDatadis();
+    FakesDatadis::fake();
 
     expect(LaravelDatadisClient::getSupplies()->records)->toHaveCount(1);
 });
 
 it('exposes the public open data client, sharing the login', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
     $query = new PublicSearchQuery(new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2026-01-31'), [Community::Madrid]);
 
     app(PublicApiClient::class)->apiSearch($query);
@@ -76,7 +77,7 @@ it('publishes the config under the package tag and ships sensible defaults', fun
 
 it('offers the operations that change data through the facade and the injected client', function (Closure $client) {
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => Http::response(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
         '*/new-authorization*' => Http::response('Authorization created', 200, ['Content-Type' => 'text/plain']),
         '*/cancel-authorization*' => Http::response('Authorization cancelled', 200, ['Content-Type' => 'text/plain']),
         '*/partner-delete-user*' => Http::response('User unlinked', 200, ['Content-Type' => 'text/plain']),

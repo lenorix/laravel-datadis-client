@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Cache;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 use Lenorix\LaravelDatadisClient\Tests\Support\NoLockStore;
 
 /*
@@ -13,7 +14,7 @@ it('still refuses after a travelled window on a store that keeps its own time, a
     Cache::extend('owntime', fn () => Cache::repository(new NoLockStore));
     config()->set('cache.stores.owntime', ['driver' => 'owntime']);
     config()->set('cache.default', 'owntime');
-    fakeEverything();
+    FakesDatadis::fake();
     $client = app(DatadisClient::class);
     $month = monthsAgo(2);
 

@@ -6,10 +6,11 @@ use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 use Psr\Log\LoggerInterface;
 
 it('reports a refused repeat as a warning, not an error', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
     app(DatadisClient::class)->getConsumptionDataOf($supply, monthsAgo());
 

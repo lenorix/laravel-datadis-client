@@ -12,9 +12,10 @@ use Lenorix\DatadisClient\Exceptions\UnsupportedOperationException;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 use Lenorix\LaravelDatadisClient\Internal\Importer;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('sends nothing when it imports', function () {
-    fakeEverything();
+    FakesDatadis::fake();
     Datadis::rememberConsumption(Cups::fromString(CUPS), '2', 5, monthsAgo(2), at: new DateTimeImmutable('-1 hour'));
     Http::assertNothingSent();
 });

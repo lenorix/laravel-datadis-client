@@ -2,9 +2,10 @@
 
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('lists supplies with the artisan command', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
 
     $this->artisan('datadis:supplies')->expectsOutputToContain(CUPS)->assertSuccessful();
 });
@@ -14,7 +15,7 @@ it('fails the command cleanly for an unknown account', function () {
 });
 
 it('sends the holder as authorizedNif from the command', function () {
-    fakeDatadis();
+    FakesDatadis::fake();
 
     $this->artisan('datadis:supplies --holder=12345678Z')->assertSuccessful();
 
@@ -23,7 +24,7 @@ it('sends the holder as authorizedNif from the command', function () {
 
 it('lists the supplies of a named account, logging in as that account', function () {
     config()->set('datadis-client.accounts.other', ['username' => '12345678Z', 'password' => 'other-secret']);
-    fakeDatadis();
+    FakesDatadis::fake();
 
     $this->artisan('datadis:supplies --account=other')->expectsOutputToContain(CUPS)->assertSuccessful();
 
@@ -31,7 +32,7 @@ it('lists the supplies of a named account, logging in as that account', function
 });
 
 it('fails the command cleanly for a holder that is not a valid NIF', function (string $holder) {
-    fakeDatadis();
+    FakesDatadis::fake();
 
     $this->artisan("datadis:supplies --holder={$holder}")->assertFailed();
 

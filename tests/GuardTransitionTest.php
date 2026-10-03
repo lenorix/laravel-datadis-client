@@ -17,10 +17,11 @@ use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 use Lenorix\LaravelDatadisClient\Tests\Support\NoLockStore;
 
 it('makes the client refuse what a record of your own says was sent', function (Closure $remember, Closure $send) {
-    fakeEverything();
+    FakesDatadis::fake();
     $month = monthsAgo(2);
 
     expect($remember($month))->toBeTrue();
@@ -63,7 +64,7 @@ it('makes the client refuse what a record of your own says was sent', function (
 ]);
 
 it('does not block a query that differs from the one remembered', function (Closure $send) {
-    fakeEverything();
+    FakesDatadis::fake();
     $month = monthsAgo(2);
     Datadis::rememberConsumption(Cups::fromString(CUPS), '2', 5, $month);
 
@@ -91,7 +92,7 @@ it('remembers for what is left of the window, from the time the query was sent',
 
     // Out of the window: nothing to protect, so nothing is recorded.
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(3), at: new DateTimeImmutable('-'.(RequestLedger::WINDOW_SECONDS + 1).' seconds')))->toBeFalse();
-    fakeEverything();
+    FakesDatadis::fake();
     app(DatadisClient::class)->getMaxPowerOf(supplyOf(app(DatadisClient::class)), monthsAgo(3));
     expect(guardedRequests())->toBe(1);
 });
@@ -107,7 +108,7 @@ it('keeps the original time of the query, not the moment it was remembered', fun
 });
 
 it('does not take a newer attempt back to an older time', function () {
-    fakeEverything();
+    FakesDatadis::fake();
     $client = app(DatadisClient::class);
     $client->getMaxPowerOf(supplyOf($client), monthsAgo(2));   // sent now
 
@@ -116,7 +117,7 @@ it('does not take a newer attempt back to an older time', function () {
 
 it('keys the entries on the account it is given', function () {
     config()->set('datadis-client.accounts.other', ['username' => '12345678Z', 'password' => 'x']);
-    fakeEverything();
+    FakesDatadis::fake();
     Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), account: 'other');
 
     // The default account is not blocked by what was remembered for another one.
@@ -328,7 +329,7 @@ it('does not record the same attempt twice', function () {
 });
 
 it('is one guard entry for maximum power and reactive energy, as for the client', function (Closure $remember, Closure $send) {
-    fakeEverything();
+    FakesDatadis::fake();
     $month = monthsAgo(2);
 
     expect($remember($month))->toBeTrue();

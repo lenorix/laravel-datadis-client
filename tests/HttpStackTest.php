@@ -16,14 +16,15 @@ use Lenorix\DatadisClient\Exceptions\ServiceUnavailableException;
 use Lenorix\DatadisClient\Exceptions\TransportException;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('turns the documented failure answers into the exceptions the testing skill promises', function (int $status, string $exception) {
-    fakeDatadis();
+    FakesDatadis::fake();
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
     Http::swap(new Factory);
     Http::preventStrayRequests();
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => Http::response(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
         '*/api-private/api/get-consumption-data*' => Http::response('', $status),
     ]);
 
@@ -62,7 +63,7 @@ it('refuses an unknown http stack', function () {
 
 it('completes a whole flow on the guzzle stack, decoding the answers, without touching Laravel\'s Http', function () {
     $mock = new MockHandler([
-        new Response(200, ['Content-Type' => 'text/plain'], fakeToken()),
+        new Response(200, ['Content-Type' => 'text/plain'], FakesDatadis::token()),
         new Response(200, ['Content-Type' => 'application/json'], json_encode(['supplies' => [[
             'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
         ]], 'distributorError' => []])),
@@ -93,7 +94,7 @@ it('never reaches the network on the guzzle stack unless a test queues an answer
 
 it('sends the calls through plain Guzzle unless the test environment asks for Laravel\'s stack', function (string $environment, bool $laravelStack) {
     app()['env'] = $environment;
-    fakeDatadis();
+    FakesDatadis::fake();
     config()->set('datadis-client.http.stack', null);   // after the fake, which forces Laravel's stack: this is what is under test
 
     if ($laravelStack) {
@@ -133,7 +134,7 @@ it('refuses the guzzle stack in the test environment unless the test brought a m
 
 it('passes extra Guzzle options to every call on the laravel stack', function () {
     config()->set('datadis-client.http.options', ['headers' => ['X-Trace' => 'abc']]);
-    fakeDatadis();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 

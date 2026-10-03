@@ -11,13 +11,14 @@ use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('tells that a query was claimed when it goes out', function () {
     $seen = [];
     Event::listen(DatadisLedgerChanged::class, function (DatadisLedgerChanged $event) use (&$seen) {
         $seen[] = $event;
     });
-    fakeEverything();
+    FakesDatadis::fake();
     $client = app(DatadisClient::class);
 
     $client->getMaxPowerOf(supplyOf($client), monthsAgo(2));
@@ -35,7 +36,7 @@ it('tells that a query was refused, with the attempt that holds it and when it m
     Event::listen(DatadisLedgerChanged::class, function (DatadisLedgerChanged $event) use (&$seen) {
         $seen[] = $event;
     });
-    fakeEverything();
+    FakesDatadis::fake();
     $client = app(DatadisClient::class);
     $client->getMaxPowerOf(supplyOf($client), monthsAgo(2));
 
@@ -96,7 +97,7 @@ it('carries no personal data: neither the CUPS, nor the username, nor the NIF of
     Event::listen(DatadisLedgerChanged::class, function (DatadisLedgerChanged $event) use (&$seen) {
         $seen[] = $event;
     });
-    fakeEverything();
+    FakesDatadis::fake();
     $client = app(DatadisClient::class)->forHolder(Nif::fromString('12345678Z'));
 
     $client->getConsumptionDataOf(supplyOf($client), monthsAgo(2));
@@ -115,7 +116,7 @@ it('does not let a listener that throws decide whether a query goes', function (
     Event::listen(DatadisLedgerChanged::class, function () {
         throw new RuntimeException('a broken listener');
     });
-    fakeEverything();
+    FakesDatadis::fake();
     $client = app(DatadisClient::class);
 
     $client->getMaxPowerOf(supplyOf($client), monthsAgo(2));
@@ -126,7 +127,7 @@ it('does not let a listener that throws decide whether a query goes', function (
 });
 
 it('reaches an Event::fake() set after the client was built', function () {
-    fakeEverything();
+    FakesDatadis::fake();
     $client = app(DatadisClient::class);
     Event::fake([DatadisLedgerChanged::class]);
 

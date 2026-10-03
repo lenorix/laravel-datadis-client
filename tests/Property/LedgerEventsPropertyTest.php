@@ -35,7 +35,13 @@ it('says with its events what the guard did on the wire, whatever the sequence o
         Generators::elements(0, 60, 3600, 86400, $window - 1, $window, $window + 1, 90000),
     );
 
-    $this->limitTo(min(iterations(), 60))->forAll(Generators::seq($steps))->disableShrinking()->then(function (array $sequence) use ($window, $broken, $usernames, $holders) {
+    // One listener for the whole property (one per case would pile up and exhaust the memory), appending to the list of the case being run.
+    $events = [];
+    Event::listen(DatadisLedgerChanged::class, function (DatadisLedgerChanged $event) use (&$events) {
+        $events[] = $event;
+    });
+
+    $this->limitTo(min(iterations(), 600))->forAll(Generators::seq($steps))->disableShrinking()->then(function (array $sequence) use ($window, $broken, $usernames, $holders, &$events) {
         config()->set('datadis-client.accounts', [
             'default' => ['username' => $usernames['default'], 'password' => 'x'],
             'tenant.east' => ['username' => $usernames['tenant.east'], 'password' => 'y'],
@@ -51,10 +57,7 @@ it('says with its events what the guard did on the wire, whatever the sequence o
         app('cache')->store()->clear();
         Carbon::setTestNow(Carbon::parse('2026-10-03 10:00', 'Europe/Madrid'));
 
-        $events = [];
-        Event::listen(DatadisLedgerChanged::class, function (DatadisLedgerChanged $event) use (&$events) {
-            $events[] = $event;
-        });
+        $events = [];   // the one listener, set up below, appends to this case's list
         $manager = app(LaravelDatadisClient::class);
 
         $lastSent = [];   // identity => when it last went out

@@ -9,6 +9,7 @@ use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('takes the credentials from services when set and keeps every other account option', function () {
     $this->limitTo(iterations())->forAll(
@@ -25,7 +26,7 @@ it('takes the credentials from services when set and keeps every other account o
         config()->set('datadis-client.accounts.default', ['username' => nifOf($accountNumber), 'password' => $accountPassword, 'api_version' => $version]);
         config()->set('services.datadis', ['username' => $servicesHasUser ? nifOf($serviceNumber) : null, 'password' => $servicePassword]);
         Http::fake([
-            '*/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+            '*/login' => Http::response(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
             '*get-supplies*' => Http::response(['supplies' => [], 'distributorError' => []]),
         ]);
 
@@ -49,7 +50,7 @@ it('guards each holder apart: asking for another holder is allowed, repeating on
             Http::swap(new Factory);
             Http::preventStrayRequests();
             app('cache')->store()->clear();
-            fakeDatadis();
+            FakesDatadis::fake();
             $client = app(DatadisClient::class);
             $supply = $client->findSupply(Cups::fromString(CUPS));
             $month = monthsAgo($month);
@@ -68,7 +69,7 @@ it('sends a guarded query at most once however many clients claim it one after a
         Http::swap(new Factory);
         Http::preventStrayRequests();
         app('cache')->store()->clear();
-        fakeDatadis();
+        FakesDatadis::fake();
         $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
         $refused = 0;
 

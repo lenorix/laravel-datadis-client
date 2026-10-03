@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\Calendar\Territory;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 /** The recipe of the datadis-electricity-domain skill, run on a week day, a Saturday and a Canary Islands supply. */
 function energyPerPeriod(string $postalCode, string $accessFare, array $powers): array
@@ -12,7 +13,7 @@ function energyPerPeriod(string $postalCode, string $accessFare, array $powers):
     $row = fn (string $date, string $time, float $kWh) => ['cups' => CUPS, 'date' => $date, 'time' => $time, 'consumptionKWh' => $kWh, 'obtainMethod' => 'Real'];
 
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => Http::response(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
         '*/get-supplies*' => Http::response(['supplies' => [[
             'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'postalCode' => $postalCode,
             'validDateFrom' => '2020/01/01', 'validDateTo' => '',

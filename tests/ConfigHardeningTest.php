@@ -7,19 +7,15 @@ use Lenorix\DatadisClient\Http\RetryingClient;
 use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\Internal\Retries;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 
 /** What the settings of the package do when they are odd: each one is a decision a deployment makes with a typo. */
-function privately(string $method, mixed ...$arguments): mixed
-{
-    return (fn () => $this->{$method}(...$arguments))->call(app(Manager::class));
-}
-
 it('falls back to the account named default when the default account is blank or not a text', function (mixed $setting) {
     config()->set('datadis-client.default', $setting);
-    fakeEverything();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 
@@ -29,7 +25,7 @@ it('falls back to the account named default when the default account is blank or
 it('lets services.datadis win over the account whichever way a key is spelled', function (string $services, string $account) {
     config()->set('services.datadis', ['username' => '00000000T', 'password' => 'secret', $services => 'v1']);
     config()->set('datadis-client.accounts.default', [$account => 'v2']);
-    fakeEverything();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 
@@ -136,7 +132,7 @@ it('refuses delays that are not positive or that shrink', function (int $base, i
 it('ignores the blank values of services.datadis, so an empty .env line does not blank an account out', function (mixed $blank) {
     config()->set('services.datadis', ['username' => $blank, 'password' => $blank, 'timeout' => $blank]);
     config()->set('datadis-client.accounts.default', ['username' => '00000000T', 'password' => 'from the account', 'timeout' => 7]);
-    fakeEverything();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 
@@ -146,7 +142,7 @@ it('ignores the blank values of services.datadis, so an empty .env line does not
 it('settles the settings of an account given with numeric keys, as a typo in a config file may leave them', function () {
     config()->set('services.datadis', ['username' => '00000000T', 'password' => 'secret', 0 => 'stray', 7 => 'strays']);
     config()->set('datadis-client.accounts.default', [3 => 'also stray', 'timeout' => 7]);
-    fakeEverything();
+    FakesDatadis::fake();
 
     app(DatadisClient::class)->getSupplies();
 

@@ -12,6 +12,7 @@ use Lenorix\DatadisClient\Values\MeasurementType;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 /**
  * Every public method of the client, read and write, reached through the facade and through the injected
@@ -85,7 +86,7 @@ it('covers every public method of the client', function () {
 });
 
 it('reaches every call of the client, read and write', function (string $call, string $through) {
-    fakeEverything();
+    FakesDatadis::fake();
     [$run, $endpoint] = everyClientCall()[$call];
     $client = $through === 'facade' ? LaravelDatadisClient::getFacadeRoot() : app(DatadisClient::class);
 
@@ -95,7 +96,7 @@ it('reaches every call of the client, read and write', function (string $call, s
 })->with(array_keys(everyClientCall()))->with(['facade', 'injected']);
 
 it('reaches the calls of the client that look at the ledger, on the cache of Laravel', function (string $call) {
-    fakeEverything();
+    FakesDatadis::fake();
     [$run, $expected] = offlineClientCalls()[$call];
 
     $result = $run(app(DatadisClient::class));
@@ -105,7 +106,7 @@ it('reaches the calls of the client that look at the ledger, on the cache of Lar
 })->with(array_keys(offlineClientCalls()));
 
 it('reaches every public open data call', function (Closure $call, string $endpoint) {
-    fakeEverything();
+    FakesDatadis::fake();
 
     $call(app(Manager::class)->publicApi());
 
@@ -131,7 +132,7 @@ function selfConsumptionQuery(): SelfConsumptionSearchQuery
 
 it('refuses every reactive energy call on API v1 before sending anything, and leaves the other calls alone', function () {
     config()->set('datadis-client.accounts.default.api_version', 'v1');
-    fakeEverything();
+    FakesDatadis::fake();
     $client = app(DatadisClient::class);
     $supply = $client->findSupply(Cups::fromString(CUPS));
 

@@ -12,6 +12,7 @@ use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 /**
  * The guard and the import on the stores a real application shares between workers: the array store (one
@@ -73,7 +74,7 @@ it('lives for what is left of the window on every store', function (string $driv
 
 it('makes the client refuse a remembered query and take a free one once, on every store', function (string $driver) {
     useGuardStore($driver);
-    fakeEverything();
+    FakesDatadis::fake();
     $month = monthsAgo(2);
 
     Datadis::rememberConsumption(Cups::fromString(CUPS), '2', 5, $month, at: new DateTimeImmutable('-2 hours'));

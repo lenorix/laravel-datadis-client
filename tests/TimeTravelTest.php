@@ -4,6 +4,7 @@ use Illuminate\Support\Carbon;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Time\Month;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 /*
  * The package takes its time from the application (`now()`), so a test can run a daily job over several days with
@@ -12,7 +13,7 @@ use Lenorix\DatadisClient\Time\Month;
 afterEach(fn () => Carbon::setTestNow());
 
 it('refreshes every day with a range that differs from the day before, over days of travelled time', function () {
-    fakeEverything();
+    FakesDatadis::fake();
     $ranges = [];
 
     foreach (range(0, 5) as $day) {
@@ -30,7 +31,7 @@ it('refreshes every day with a range that differs from the day before, over days
 });
 
 it('refuses the same query within the window and lets it through after it, as time moves', function () {
-    fakeEverything();
+    FakesDatadis::fake();
     $this->travelTo(Carbon::parse('2026-07-10 04:00', 'Europe/Madrid'));
     $client = app(DatadisClient::class);
     $month = Month::of(2026, 5);
@@ -46,7 +47,7 @@ it('refuses the same query within the window and lets it through after it, as ti
 });
 
 it('keeps the token for as long as the application time says, and logs in again after it', function () {
-    fakeEverything();
+    FakesDatadis::fake();
     $this->travelTo(Carbon::parse('2026-07-10 04:00', 'Europe/Madrid'));
 
     app(DatadisClient::class)->getSupplies();
@@ -60,7 +61,7 @@ it('keeps the token for as long as the application time says, and logs in again 
 });
 
 it('tells which months a refused daily refresh did not get', function () {
-    fakeEverything();
+    FakesDatadis::fake();
     $this->travelTo(Carbon::parse('2026-10-03 04:00', 'Europe/Madrid'));   // an odd day: the previous month and the current one
     $client = app(DatadisClient::class);
     $supply = supplyOf($client);

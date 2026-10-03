@@ -9,12 +9,13 @@ use Lenorix\DatadisClient\Exceptions\ServiceUnavailableException;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 it('retries a harmless read after a gateway error, and the login too', function () {
     Http::fake([
         '*/nikola-auth/tokens/login' => Http::sequence()
             ->push('', 503)
-            ->push(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+            ->push(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
         '*/get-supplies*' => Http::sequence()
             ->push('', 502)
             ->push('', 504)
@@ -29,7 +30,7 @@ it('retries a harmless read after a gateway error, and the login too', function 
 it('gives up after the configured retries', function () {
     config()->set('datadis-client.http.retries.max', 1);
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => Http::response(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
         '*/get-supplies*' => Http::response('', 503),
     ]);
 
@@ -38,12 +39,12 @@ it('gives up after the configured retries', function () {
 });
 
 it('never retries a data query nor a call that changes data', function (string $endpoint, Closure $call) {
-    fakeDatadis();
+    FakesDatadis::fake();
     $supply = app(DatadisClient::class)->findSupply(Cups::fromString(CUPS));
     Http::swap(new Factory);
     Http::preventStrayRequests();
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => Http::response(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
         "*/{$endpoint}*" => Http::response('', 503),
     ]);
 
@@ -60,7 +61,7 @@ it('never retries a data query nor a call that changes data', function (string $
 it('does not retry when retries are turned off', function () {
     config()->set('datadis-client.http.retries.max', 0);
     Http::fake([
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
+        '*/nikola-auth/tokens/login' => Http::response(FakesDatadis::token(), 200, ['Content-Type' => 'text/plain']),
         '*/get-supplies*' => Http::response('', 503),
     ]);
 
