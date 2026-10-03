@@ -465,3 +465,48 @@ it('says nothing is published only when the answer is empty and no distributor f
     'nothing yet' => [['timeCurve' => [], 'distributorError' => []], true, 0],
     'a distributor failed' => [['timeCurve' => [], 'distributorError' => [['distributorCode' => '2', 'distributorName' => 'X', 'errorCode' => '500', 'errorDescription' => 'down']]], false, 1],
 ]);
+
+it('prints the tables of rows Datadis sends without dates, tariffs or powers, instead of failing', function (string $command, string $endpoint, array $answer, array $cells) {
+    fakeForCommands([$endpoint => Http::response($answer)]);
+
+    [$code, $output] = runCommand($command);
+
+    expect($code)->toBe(0);
+    expect($output)->toContain(...$cells);
+})->with([
+    'supplies without dates' => [
+        'datadis:supplies', '*/get-supplies*',
+        ['supplies' => [['cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2']], 'distributorError' => []],
+        ['X', 'yes'],
+    ],
+    'a contract without dates, tariff or power' => [
+        'datadis:contract '.CUPS, '*/get-contract-detail*',
+        ['contract' => [['cups' => CUPS, 'distributor' => 'D', 'marketer' => 'M']], 'distributorError' => []],
+        ['D', 'M', 'open'],
+    ],
+    'authorizations without dates' => [
+        'datadis:authorizations', '*/list-authorization*',
+        ['authorizations' => [['id' => '1', 'ownerDocument' => '00000000T', 'requesterDocument' => '12345678Z', 'cups' => CUPS, 'status' => 'ACTIVE']], 'distributorError' => []],
+        ['ACTIVE'],
+    ],
+]);
+
+it('prints every date of the rows it lists', function (string $command, string $endpoint, array $answer, array $cells) {
+    fakeForCommands([$endpoint => Http::response($answer)]);
+
+    [$code, $output] = runCommand($command);
+
+    expect($code)->toBe(0);
+    expect($output)->toContain(...$cells);
+})->with([
+    'supplies' => [
+        'datadis:supplies', '*/get-supplies*',
+        ['supplies' => [['cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2019/03/04', 'validDateTo' => '2031/05/06']], 'distributorError' => []],
+        ['2019-03-04', '2031-05-06'],
+    ],
+    'authorizations' => [
+        'datadis:authorizations', '*/list-authorization*',
+        ['authorizations' => [['id' => '1', 'ownerDocument' => '00000000T', 'requesterDocument' => '12345678Z', 'cups' => CUPS, 'status' => 'ACTIVE', 'validityDateStart' => '2026/01/07', 'validityDateEnd' => '2027/02/08']], 'distributorError' => []],
+        ['2026-01-07', '2027-02-08'],
+    ],
+]);
