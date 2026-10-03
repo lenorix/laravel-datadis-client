@@ -5,6 +5,7 @@ use Illuminate\Cache\FileStore;
 use Illuminate\Contracts\Cache\Store;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Sleep;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\InvalidRequestException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
@@ -259,6 +260,7 @@ it('does not take back a newer attempt that appeared while the history was being
 });
 
 it('takes a lock per account while it imports, so two imports cannot leave the older time', function () {
+    Sleep::fake(syncWithCarbon: true);   // the wait for the lock is simulated: two seconds without waiting them
     config()->set('datadis-client.accounts.other', ['username' => '12345678Z', 'password' => 'x']);
 
     // Nobody else imports for this account: it goes through, and the lock is free again afterwards.

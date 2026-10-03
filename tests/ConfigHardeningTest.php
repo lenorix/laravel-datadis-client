@@ -1,0 +1,93 @@
+<?php
+
+use Illuminate\Support\Facades\Http;
+use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\DatadisClient\Exceptions\ConfigurationException;
+use Lenorix\DatadisClient\Http\RetryingClient;
+use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+
+/** What the settings of the package do when they are odd: each one is a decision a deployment makes with a typo. */
+function privately(string $method, mixed ...$arguments): mixed
+{
+    return (fn () => $this->{$method}(...$arguments))->call(app(Manager::class));
+}
+
+it('falls back to the account named default when the default account is blank or not a text', function (mixed $setting) {
+    config()->set('datadis-client.default', $setting);
+    fakeEverything();
+
+    app(DatadisClient::class)->getSupplies();
+
+    expect(array_column(logins(), 'username'))->toBe(['00000000T']);
+})->with(['an empty text' => [''], 'blanks' => ['   '], 'nothing' => [null], 'a number' => [5], 'a list' => [['x']]]);
+
+it('lets services.datadis win over the account whichever way a key is spelled', function (string $services, string $account) {
+    config()->set('services.datadis', ['username' => '00000000T', 'password' => 'secret', $services => 'v1']);
+    config()->set('datadis-client.accounts.default', [$account => 'v2']);
+    fakeEverything();
+
+    app(DatadisClient::class)->getSupplies();
+
+    // v1 has no `-v2` suffix on its paths: services decided.
+    Http::assertSent(fn ($request) => str_contains($request->url(), 'get-supplies') && ! str_contains($request->url(), 'get-supplies-v2'));
+})->with([
+    'api_version over api-version' => ['api_version', 'api-version'],
+    'api-version over api_version' => ['api-version', 'api_version'],
+]);
+
+it('says which levels the report level may be, and which stacks the HTTP stack may be', function () {
+    config()->set('datadis-client.report_level', 'loud');
+    expect(fn () => app(Manager::class)->reportLevel())->toThrow(ConfigurationException::class, 'emergency, alert, critical, error, warning, notice, info, debug');
+
+    config()->set('datadis-client.report_level', null);   // account() checks it first
+    config()->set('datadis-client.http.stack', 'bogus');
+    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, '"bogus"');
+
+    config()->set('datadis-client.http.stack', 5);
+    expect(fn () => app(Manager::class)->account())->toThrow(ConfigurationException::class, 'int given');
+});
+
+it('retries twice with delays of one and thirty seconds when nothing is said, and takes whole numbers as text', function () {
+    $of = fn (array $retries) => (function () use ($retries) {
+        config()->set('datadis-client.http.retries', $retries);
+        $client = privately('withRetries', new class implements ClientInterface
+        {
+            public function sendRequest(RequestInterface $request): ResponseInterface
+            {
+                throw new LogicException('not sent');
+            }
+        });
+        $read = fn (string $name) => (new ReflectionProperty(RetryingClient::class, $name))->getValue($client);
+
+        return [$read('maxRetries'), $read('baseDelayMs'), $read('maxDelayMs')];
+    })();
+
+    expect($of(['max' => null, 'base_delay_ms' => '', 'max_delay_ms' => null]))->toBe([2, 1000, 30000]);
+    expect($of(['max' => '3', 'base_delay_ms' => ' 5 ', 'max_delay_ms' => '50']))->toBe([3, 5, 50]);
+});
+
+it('derives the secret of the guard from the application key the way it says', function (string $appKey, string $bytes) {
+    config()->set('datadis-client.ledger.key', '');
+    config()->set('app.key', $appKey);
+
+    expect(privately('ledgerKey'))->toBe(hash_hmac('sha256', 'laravel-datadis-client: 24 hour guard', $bytes, true));
+})->with([
+    'a base64 key is decoded' => ['base64:'.base64_encode('0123456789abcdef0123456789abcdef'), '0123456789abcdef0123456789abcdef'],
+    'a text is used as it is' => ['0123456789abcdef', '0123456789abcdef'],
+    'a base64 that does not decode is used as it is' => ['base64:!!!!!!!!!!!!!!!!!!', 'base64:!!!!!!!!!!!!!!!!!!'],
+]);
+
+it('uses a secret of its own as it is, and refuses what is not one', function () {
+    config()->set('datadis-client.ledger.key', 'my own secret of enough bytes');
+    expect(privately('ledgerKey'))->toBe('my own secret of enough bytes');
+
+    config()->set('datadis-client.ledger.key', 5);
+    expect(fn () => privately('ledgerKey'))->toThrow(ConfigurationException::class, 'must be a text or null, int given');
+
+    config()->set('datadis-client.ledger.key', null);
+    config()->set('app.key', '');
+    expect(fn () => privately('ledgerKey'))->toThrow(ConfigurationException::class, 'Set datadis-client.ledger.key');
+});

@@ -4,6 +4,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Sleep;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
@@ -89,6 +90,7 @@ it('makes the client refuse a remembered query and take a free one once, on ever
 })->with(['array', 'file', 'database']);
 
 it('takes a lock per account while it imports, on the stores that can lock', function (string $driver) {
+    Sleep::fake(syncWithCarbon: true);   // the wait for the lock is simulated: two seconds without waiting them
     useGuardStore($driver);
     $month = fn () => monthsAgo(2);
 
