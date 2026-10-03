@@ -35,8 +35,8 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Lenorix\DatadisClient\DatadisClient;
-use Lenorix\DatadisClient\Exceptions\InvalidRequestException;
 use Lenorix\DatadisClient\Exceptions\NoDataException;
+use Lenorix\DatadisClient\Exceptions\NothingToRefreshException;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Time\MonthPlanner;
@@ -151,8 +151,8 @@ class RefreshSupply implements ShouldQueue
         try {
             // the current month today, the previous one and the current one tomorrow: never yesterday's query
             $result = $client->getLatestConsumptionDataOf($supply);
-        } catch (NoDataException|RepetitionWindowException|InvalidRequestException) {
-            return; // nothing yet, already asked today, or the contract has nothing to refresh
+        } catch (NoDataException|RepetitionWindowException|NothingToRefreshException) {
+            return; // nothing yet, already asked today, or the contract has nothing to refresh this month
         }
 
         // persist $result->records and each ->raw

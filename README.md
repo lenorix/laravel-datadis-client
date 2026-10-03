@@ -221,7 +221,9 @@ $maxPower = $client->getLatestMaxPowerOf($supply);
 
 The current month is always in the range, and the previous month is added every second day. Run it once a day.
 
-One exception, which comes from the client: **in the month the contract starts, the range is that month every day**, because there is no previous month to alternate with. A run within 24 hours and 10 minutes of the day before asks the same query and is refused (`RepetitionWindowException`), so that month is refreshed every second day, not every day. Catch the exception, as the job in the skill does. From the next month the range alternates again. Reactive energy has no such method (it shares its guard entry with maximum power): ask it for closed months. The `datadis-sync` Boost skill has a complete job.
+One exception, which comes from the client: **in the month the contract starts, the range is that month every day**, because there is no previous month to alternate with. A run within 24 hours and 10 minutes of the day before asks the same query and is refused (`RepetitionWindowException`), so that month is refreshed every second day, not every day. Catch the exception, as the job in the skill does. From the next month the range alternates again.
+
+When the contract has nothing to refresh this month (it ended before it, or starts after it) the call throws `NothingToRefreshException`. Catch that type and not its parent `InvalidRequestException`, which would also hide a real mistake. The other refusals before sending have their own types too: `OutOfServedRangeException` (a month Datadis does not serve) and `OutOfContractRangeException` (a range outside the contract). Reactive energy has no such method (it shares its guard entry with maximum power): ask it for closed months. The `datadis-sync` Boost skill has a complete job.
 
 ### Moving from your own record of queries
 

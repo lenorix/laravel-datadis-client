@@ -43,7 +43,7 @@ $client->assertServedRange($from, $to);                              // refuses 
 $until = $client->consumptionDataOfBlockedUntil($supply, $from);      // ?DateTimeImmutable: until when the ledger refuses it, nothing sent or claimed
 ```
 
-`getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()` are for a job that runs every day: the range alternates between the current month and the previous plus the current month, so today's query is never yesterday's. Run it once a day. In the month the contract starts the range is that month every day (there is no previous month to alternate with), so a run within 24 hours and 10 minutes of the day before throws `RepetitionWindowException`: catch it. It throws `InvalidRequestException` when the contract has nothing to refresh this month. Reactive energy has no such method: ask it for closed months.
+`getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()` are for a job that runs every day: the range alternates between the current month and the previous plus the current month, so today's query is never yesterday's. Run it once a day. In the month the contract starts the range is that month every day (there is no previous month to alternate with), so a run within 24 hours and 10 minutes of the day before throws `RepetitionWindowException`: catch it. It throws `NothingToRefreshException` when the contract has nothing to refresh this month (it ended before it, or starts after it); catch that type, not `InvalidRequestException`, which would also swallow a bad argument. Reactive energy has no such method: ask it for closed months.
 
 The consumption and maximum power calls are subject to the 24 hour rule, which the Datadis manual documents (sections 4.3 and 4.4). The client applies it to the reactive call too, to be safe. The others are free to repeat.
 
@@ -94,6 +94,11 @@ Every failure is a `Lenorix\DatadisClient\Exceptions\DatadisException` with `req
 | `AuthenticationException` | bad credentials, or the token was rejected | fix the credentials; if `requestSent`, the query counts |
 | `RequestRejectedException` | Datadis refused the parameters | fix them; never resend as is |
 | `InvalidRequestException` | refused before sending | fix; nothing was sent |
+| `OutOfServedRangeException` (`month`) | a month Datadis does not serve: in the future, or more than 24 months back | ask for a month inside the window |
+| `OutOfContractRangeException` (`contractStart`, `contractEnd`) | a range before the contract started or after it ended | clip the range to the contract |
+| `NothingToRefreshException` | `getLatest...Of()` on a contract with nothing to refresh this month | skip the run |
+
+The last three are `InvalidRequestException`s: catch the specific type when you mean it, and let the parent report a real mistake.
 | `ServiceUnavailableException`, `TransportException` | Datadis or the network failed | later; a data query that may have arrived counts as used today |
 | `PageLimitReachedException` | `apiSearchAll()` or `apiSearchAutoAll()` stopped at `maxPages` with a full last page, after the last record | more records may remain: it carries `nextPage` and `skippedRows` |
 
