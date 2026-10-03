@@ -5,6 +5,8 @@ All notable changes to `laravel-datadis-client` will be documented in this file.
 ## Unreleased
 
 - **Requires `lenorix/datadis-client` ^0.6.1.**
+- **`DatadisLedgerChanged` event** for every query the guard claims, releases or imports: the account by name, the guard's opaque key, the time and the endpoint, and no personal data. A refusal has no event (it is the `RepetitionWindowException`). What a listener throws is ignored.
+- **Docs for the new refusals**: `NothingToRefreshException`, `OutOfServedRangeException` and `OutOfContractRangeException`, the months of a `RepetitionWindowException` and a sync job that records the months it did not get.
 - **The open data client follows the application's clock too**: `publicApi()` passes it the same clock as the private client, so a test that travels in time sees both agree about the token they share.
 
 ## 0.2.0 - 2026-10-02

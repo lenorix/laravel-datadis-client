@@ -208,6 +208,25 @@ $until = $client->consumptionDataOfBlockedUntil($supply, $month);   // ?DateTime
 
 `maxPowerOfBlockedUntil()` and `reactiveDataOfBlockedUntil()` do the same. A job should call and catch the exception instead: that decides in one step.
 
+### See what the guard does
+
+Every query the guard lets go out, frees or imports is announced with a Laravel event, `Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged`, so you can keep a history or audit the guard without reading the cache:
+
+```php
+use Lenorix\DatadisClient\Guard\LedgerEventKind;
+use Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged;
+
+Event::listen(function (DatadisLedgerChanged $event) {
+    // $event->kind: Claimed (it is going out), Released (it never left, so it may be sent again), Remembered (an import)
+    // $event->account: the name of the account in `datadis-client.accounts`
+    // $event->key, $event->at, $event->endpoint
+});
+```
+
+It carries no personal data: `account` is the name, not the username (a NIF), `key` is the guard's keyed hash of the query (the same for the same query), and there is no CUPS. What a listener throws is ignored: a broken listener never decides whether a query goes.
+
+There is **no event for a refusal**: the client has only those three kinds. A query the guard refuses is the `RepetitionWindowException` and its log line, which also say when it is allowed again and which months it asked for.
+
 ### Refresh the current month every day
 
 Asking the same range every day is refused: the guard keeps a query for 24 hours and 10 minutes. For a daily job use the `getLatest` methods, which alternate the range from one day to the next:

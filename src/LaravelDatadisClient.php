@@ -11,6 +11,7 @@ use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Config\Repository as Config;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as Http;
 use InvalidArgumentException;
@@ -19,6 +20,7 @@ use Lenorix\DatadisClient\DatadisConfig;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\InvalidRequestException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
+use Lenorix\DatadisClient\Guard\LedgerEvent;
 use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\DatadisClient\Http\GuzzleClientFactory;
@@ -28,6 +30,7 @@ use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\MeasurementType;
 use Lenorix\DatadisClient\Values\Nif;
+use Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
 use Lenorix\LaravelDatadisClient\Support\LaravelClock;
 use LogicException;
@@ -85,7 +88,7 @@ class LaravelDatadisClient
             $settings,
             http: $this->http($settings),
             tokenCache: $this->store(),
-            ledger: $this->ledger(),
+            ledger: $this->ledger($name),
             clock: $this->clock,
         );
     }
@@ -238,7 +241,7 @@ class LaravelDatadisClient
             }
         };
 
-        return DatadisClient::fromArray($settings, http: $mute, ledger: $this->ledger(), clock: $this->clock);
+        return DatadisClient::fromArray($settings, http: $mute, ledger: $this->ledger($name ?? $this->defaultAccount()), clock: $this->clock);
     }
 
     private function importLockName(string $username): string
@@ -246,12 +249,20 @@ class LaravelDatadisClient
         return 'datadis_import_'.substr(hash_hmac('sha256', $username, $this->ledgerKey()), 0, 40);
     }
 
-    private function ledger(): RequestLedger
+    /**
+     * @param  string  $account  the name of the account in `datadis-client.accounts`, which the events carry instead of the username
+     */
+    private function ledger(string $account): RequestLedger
     {
         return new RequestLedger(
             new LaravelAtomicStore($this->store()),
             new RequestFingerprinter($this->ledgerKey()),
             $this->clock,
+            onChange: function (LedgerEvent $change) use ($account): void {
+                // The dispatcher is taken now, not when the ledger is built: Event::fake() swaps it after the client exists.
+                // What a listener throws is ignored by the ledger, so a listener never decides whether a query goes.
+                $this->app->make(Dispatcher::class)->dispatch(new DatadisLedgerChanged($account, $change->kind, $change->key, $change->at, $change->endpoint));
+            },
         );
     }
 
