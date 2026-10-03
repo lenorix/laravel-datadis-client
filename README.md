@@ -210,22 +210,24 @@ $until = $client->consumptionDataBlockedUntilOf($supply, $month);   // ?DateTime
 
 ### See what the guard does
 
-Every query the guard lets go out, frees or imports is announced with a Laravel event, `Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged`, so you can keep a history or audit the guard without reading the cache:
+Every query the guard lets go out, frees, imports or refuses is announced with a Laravel event, `Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged`, so you can keep a history or audit the guard without reading the cache:
 
 ```php
 use Lenorix\DatadisClient\Guard\LedgerEventKind;
 use Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged;
 
 Event::listen(function (DatadisLedgerChanged $event) {
-    // $event->kind: Claimed (it is going out), Released (it never left, so it may be sent again), Remembered (an import)
+    // $event->kind: Claimed (it is going out), Released (it never left, so it may be sent again), Remembered (an import),
+    //               Refused (an attempt within the window holds it)
     // $event->account: the name of the account in `datadis-client.accounts`
     // $event->key, $event->at, $event->endpoint
+    // $event->lastAttemptAt, $event->availableAt: for a refusal, the attempt that holds the query and when it may go again
 });
 ```
 
 It carries no personal data: `account` is the name, not the username (a NIF), `key` is the guard's keyed hash of the query (the same for the same query), and there is no CUPS. What a listener throws is ignored: a broken listener never decides whether a query goes.
 
-There is **no event for a refusal**: the client has only those three kinds. A query the guard refuses is the `RepetitionWindowException` and its log line, which also say when it is allowed again and which months it asked for.
+A refusal that Datadis itself makes (a `429`) is not an event: it is the `RepetitionWindowException`, which says the same thing the event does and also which months the query asked for. A refusal the guard makes is both: the exception for the caller, the event for the history.
 
 ### Refresh the current month every day
 

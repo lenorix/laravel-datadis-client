@@ -265,7 +265,7 @@ class LaravelDatadisClient
             onChange: function (LedgerEvent $change) use ($account): void {
                 // The dispatcher is taken now, not when the ledger is built: Event::fake() swaps it after the client exists.
                 // What a listener throws is ignored by the ledger, so a listener never decides whether a query goes.
-                $this->app->make(Dispatcher::class)->dispatch(new DatadisLedgerChanged($account, $change->kind, $change->key, $change->at, $change->endpoint));
+                $this->app->make(Dispatcher::class)->dispatch(new DatadisLedgerChanged($account, $change->kind, $change->key, $change->at, $change->endpoint, $change->lastAttemptAt, $change->availableAt));
             },
         );
     }

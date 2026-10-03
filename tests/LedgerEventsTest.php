@@ -12,7 +12,7 @@ use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 
-it('tells that a query was claimed when it goes out, and says nothing of a refusal', function () {
+it('tells that a query was claimed when it goes out', function () {
     $seen = [];
     Event::listen(DatadisLedgerChanged::class, function (DatadisLedgerChanged $event) use (&$seen) {
         $seen[] = $event;
@@ -26,10 +26,36 @@ it('tells that a query was claimed when it goes out, and says nothing of a refus
     expect($seen[0]->account)->toBe('default');
     expect($seen[0]->endpoint)->toContain('max-power');
     expect(abs($seen[0]->at->getTimestamp() - time()))->toBeLessThan(5);
+    expect($seen[0]->lastAttemptAt)->toBeNull();   // only a refusal says when the attempt was and when it may go again
+    expect($seen[0]->availableAt)->toBeNull();
+});
 
-    // A refusal is the exception, not an event.
-    expect(fn () => $client->getMaxPowerOf(supplyOf($client), monthsAgo(2)))->toThrow(RepetitionWindowException::class);
-    expect($seen)->toHaveCount(1);
+it('tells that a query was refused, with the attempt that holds it and when it may go again, as the exception says', function () {
+    $seen = [];
+    Event::listen(DatadisLedgerChanged::class, function (DatadisLedgerChanged $event) use (&$seen) {
+        $seen[] = $event;
+    });
+    fakeEverything();
+    $client = app(DatadisClient::class);
+    $client->getMaxPowerOf(supplyOf($client), monthsAgo(2));
+
+    try {
+        $client->getMaxPowerOf(supplyOf($client), monthsAgo(2));
+    } catch (RepetitionWindowException $e) {
+        // the same query, claimed and then refused
+        expect(array_map(fn ($event) => $event->kind, $seen))->toBe([LedgerEventKind::Claimed, LedgerEventKind::Refused]);
+        [$claimed, $refused] = $seen;
+        expect($refused->account)->toBe('default');
+        expect($refused->key)->toBe($claimed->key);
+        expect($refused->endpoint)->toContain('max-power');
+        expect($refused->lastAttemptAt->getTimestamp())->toBe($e->lastAttemptAt->getTimestamp());
+        expect($refused->availableAt->getTimestamp())->toBe($e->availableAt->getTimestamp());
+        expect($refused->at->getTimestamp() - $refused->lastAttemptAt->getTimestamp())->toBeLessThan(5);
+
+        return;
+    }
+
+    throw new LogicException('Expected a RepetitionWindowException.');
 });
 
 it('tells that a query was released when it never left', function () {
@@ -74,8 +100,12 @@ it('carries no personal data: neither the CUPS, nor the username, nor the NIF of
     $client = app(DatadisClient::class)->forHolder(Nif::fromString('12345678Z'));
 
     $client->getConsumptionDataOf(supplyOf($client), monthsAgo(2));
+    try {
+        $client->getConsumptionDataOf(supplyOf($client), monthsAgo(2));   // refused too
+    } catch (RepetitionWindowException) {
+    }
 
-    expect($seen)->not->toBeEmpty();
+    expect(array_map(fn ($event) => $event->kind, $seen))->toContain(LedgerEventKind::Claimed, LedgerEventKind::Refused);
     // What Telescope or a log would record of the event: every property, serialised.
     $recorded = json_encode($seen).serialize($seen).var_export($seen, true);
     expect($recorded)->not->toContain(CUPS)->not->toContain('00000000T')->not->toContain('12345678Z');
