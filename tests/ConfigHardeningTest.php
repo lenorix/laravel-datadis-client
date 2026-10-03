@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Http\RetryingClient;
+use Lenorix\LaravelDatadisClient\Internal\Retries;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
@@ -51,9 +52,9 @@ it('says which levels the report level may be, and which stacks the HTTP stack m
 });
 
 it('retries twice with delays of one and thirty seconds when nothing is said, and takes whole numbers as text', function () {
-    $of = fn (array $retries) => (function () use ($retries) {
+    $of = function (array $retries) {
         config()->set('datadis-client.http.retries', $retries);
-        $client = privately('withRetries', new class implements ClientInterface
+        $client = (new Retries(app()))->wrap(new class implements ClientInterface
         {
             public function sendRequest(RequestInterface $request): ResponseInterface
             {
@@ -63,7 +64,7 @@ it('retries twice with delays of one and thirty seconds when nothing is said, an
         $read = fn (string $name) => (new ReflectionProperty(RetryingClient::class, $name))->getValue($client);
 
         return [$read('maxRetries'), $read('baseDelayMs'), $read('maxDelayMs')];
-    })();
+    };
 
     expect($of(['max' => null, 'base_delay_ms' => '', 'max_delay_ms' => null]))->toBe([2, 1000, 30000]);
     expect($of(['max' => '3', 'base_delay_ms' => ' 5 ', 'max_delay_ms' => '50']))->toBe([3, 5, 50]);
@@ -115,12 +116,12 @@ it('accepts between none and ten retries, and no more', function (int $max, bool
     };
 
     if (! $accepted) {
-        expect(fn () => privately('withRetries', $inner))->toThrow(ConfigurationException::class, 'between 0 and 10');
+        expect(fn () => (new Retries(app()))->wrap($inner))->toThrow(ConfigurationException::class, 'between 0 and 10');
 
         return;
     }
 
-    $client = privately('withRetries', $inner);
+    $client = (new Retries(app()))->wrap($inner);
     // None is the client itself, unwrapped; any other is wrapped in the retrying one.
     expect($max === 0 ? $client === $inner : $client instanceof RetryingClient)->toBeTrue();
 })->with([[-1, false], [0, true], [1, true], [10, true], [11, false]]);
@@ -128,7 +129,7 @@ it('accepts between none and ten retries, and no more', function (int $max, bool
 it('refuses delays that are not positive or that shrink', function (int $base, int $longest) {
     config()->set('datadis-client.http.retries', ['max' => 1, 'base_delay_ms' => $base, 'max_delay_ms' => $longest]);
 
-    expect(fn () => privately('withRetries', Mockery::mock(ClientInterface::class)))->toThrow(ConfigurationException::class, 'delays must be positive');
+    expect(fn () => (new Retries(app()))->wrap(Mockery::mock(ClientInterface::class)))->toThrow(ConfigurationException::class, 'delays must be positive');
 })->with([[0, 5], [-1, 5], [10, 5]]);
 
 it('ignores the blank values of services.datadis, so an empty .env line does not blank an account out', function (mixed $blank) {
