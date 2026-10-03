@@ -61,6 +61,17 @@ $client->partnerDeleteUser($nif);                                 // partner acc
 $client->partnerUserList(); $client->partnerAgreementDate();      // partner reads
 ```
 
+### Reactive energy
+
+Read it with `getReactiveDataOf($supply, $from, $to)`. What to know before you do:
+
+- **API v2 only.** Datadis documents `get-reactive-data-v2` and no v1 path, and the client has none either: on an account with `api_version` `v1`, `getReactiveData()`, `getReactiveDataOf()`, `rememberReactive()` and `reactiveDataBlockedUntil()` throw an `UnsupportedOperationException` before anything is sent. The other endpoints work on v1.
+- **Parameters:** the CUPS, the distributor code, the first and last month, and `authorizedNif` for a holder. No measurement type and no point type, so a supply listed without a point type can be asked.
+- **It shares its 24 hour entry with maximum power.** The guard (and Datadis, as third-party tools report: *"Consulta ya realizada en las últimas 24 horas"*) keys the query on the account and its parameters, not on the endpoint: asking maximum power and reactive energy for the same CUPS and the same months within 24 hours refuses the second, with a `RepetitionWindowException`. Ask them for different months or on different days (a tool of those examples widens the second range by a month), and remember that importing one query blocks the other.
+- **No daily method.** `getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()` have no reactive twin: ask it for closed months.
+- **The answer is the least verified of the API.** The client documents `{cups, energy: [{date, energy_p1..energy_p6}], code, codeDescription}` with `date` as `YYYY/MM`, but no real answer with data has been captured, and it is usually empty for domestic supplies: do not assume its unit. A period without data comes as an object whose fields are all null plus a distributor error with code `8` ("No existen datos en el periodo solicitado"): that is no data, not a failure.
+- **What the rule does with it** is in `datadis-electricity-domain`: only the excess over 33 % of the active energy is billed, over the whole billing period, so total the months of the period before you compare.
+
 ### Invoice periods
 
 `BillingCycle::monthlyFrom(15)->lastEndedPeriod(now())` gives the last closed period of a cycle that starts on the 15th, and `BillingPeriod::between($firstDay, $lastDay)` takes the dates of an invoice, which are the reliable source: Datadis does not publish the billing day, the retailer sets it and may move it. A period gives the months to ask for (`months()`), the readings that fall in it (`readingsOf()`), their exact total (`totalKWh()`) and whether the readings reach its end (`isCoveredBy()`). Dates are taken as they are on the Madrid calendar. This comes from the client's own documentation, not from a regulation: do not present the cycle as a rule. A period over the previous month and the current one is the same guarded query as the daily refresh asks on every other day: whichever runs second throws `RepetitionWindowException`. If a daily refresh runs, compute the period from the readings it already returned and stored, or catch the exception.

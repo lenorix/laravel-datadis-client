@@ -20,10 +20,11 @@ composer phpstan         # PHPStan, level max
 composer format          # Pint fixes the style; composer lint only checks it
 composer audit           # known vulnerabilities in the dependencies
 
-Mutation testing (what the tests would miss), on one class at a time and in series: `--parallel` loads the machine and Pest then reports mutants as timed out that are not. Fewer property cases make it about twice as fast (the manager takes some six minutes):
+Mutation testing (what the tests would miss), on one class at a time and in series: `--parallel` loads the machine and Pest then reports mutants as timed out that are not. Fewer property cases and the fastest tests first make it much faster (the manager takes some three and a half minutes instead of twelve). The order needs the result cache that any earlier `vendor/bin/pest` run leaves:
 
 ```bash
-DATADIS_PBT_ITERATIONS=10 XDEBUG_MODE=coverage vendor/bin/pest --mutate --no-cache --covered-only -v --class='Lenorix\LaravelDatadisClient\LaravelDatadisClient'
+vendor/bin/pest
+DATADIS_PBT_ITERATIONS=10 XDEBUG_MODE=coverage vendor/bin/pest --mutate --no-cache --covered-only --order-by=duration -v --class='Lenorix\LaravelDatadisClient\LaravelDatadisClient'
 ```
 
 Every surviving mutant is a missing test or dead code; the few that cannot be told apart from the original are listed in the pull request.

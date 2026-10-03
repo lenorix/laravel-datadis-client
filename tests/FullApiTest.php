@@ -3,6 +3,7 @@
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\DatadisClient\Exceptions\UnsupportedOperationException;
 use Lenorix\DatadisClient\PublicApi\Community;
 use Lenorix\DatadisClient\PublicApi\PublicSearchQuery;
 use Lenorix\DatadisClient\PublicApi\SelfConsumptionSearchQuery;
@@ -127,3 +128,24 @@ function selfConsumptionQuery(): SelfConsumptionSearchQuery
 {
     return new SelfConsumptionSearchQuery(new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2026-01-31'), [Community::Madrid]);
 }
+
+it('refuses every reactive energy call on API v1 before sending anything, and leaves the other calls alone', function () {
+    config()->set('datadis-client.accounts.default.api_version', 'v1');
+    fakeEverything();
+    $client = app(DatadisClient::class);
+    $supply = $client->findSupply(Cups::fromString(CUPS));
+
+    foreach ([
+        fn () => $client->getReactiveData(Cups::fromString(CUPS), '2', monthsAgo()),
+        fn () => $client->getReactiveDataOf($supply, monthsAgo()),
+        fn () => $client->reactiveDataBlockedUntil(Cups::fromString(CUPS), '2', monthsAgo()),
+        fn () => $client->reactiveDataOfBlockedUntil($supply, monthsAgo()),
+        fn () => $client->rememberReactiveData(new DateTimeImmutable('-1 hour'), Cups::fromString(CUPS), '2', monthsAgo()),
+        fn () => $client->rememberReactiveDataOf(new DateTimeImmutable('-1 hour'), $supply, monthsAgo()),
+    ] as $call) {
+        expect($call)->toThrow(UnsupportedOperationException::class);
+    }
+
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'reactive')))->toHaveCount(0);
+    expect($client->getMaxPowerOf($supply, monthsAgo())->records)->toBe([]);   // maximum power is on v1
+});

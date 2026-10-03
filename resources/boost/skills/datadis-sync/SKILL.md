@@ -205,6 +205,7 @@ Datadis is slow: a call can take tens of seconds, and each one is allowed up to 
 - The current month keeps changing for some days after it ends and has no data for the last two days. A run of trailing zeros is not real. Re-sync only months that can still change, once a day, with `getLatestConsumptionDataOf()` (see the daily job above) rather than the same range every day.
 - Upsert readings by supply and real `start`, not by date and time: the autumn change repeats `03:00`.
 - Keep energy as decimal strings or scaled integers, never floats.
+- **Reactive energy** goes with closed months, on API v2 only, and its 24 hour entry is the one of maximum power: plan the two with different months or on different days (a sync that asks maximum power for a window and reactive for the same window on the same day loses the second). `getLatestMaxPowerOf()` already uses the current range of the day, so ask reactive for closed months it did not ask.
 
 ### Accounts
 
