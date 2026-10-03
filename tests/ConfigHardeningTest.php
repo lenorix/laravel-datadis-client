@@ -40,7 +40,7 @@ it('lets services.datadis win over the account whichever way a key is spelled', 
 
 it('says which levels the report level may be, and which stacks the HTTP stack may be', function () {
     config()->set('datadis-client.report_level', 'loud');
-    expect(fn () => app(Manager::class)->reportLevel())->toThrow(ConfigurationException::class, 'emergency, alert, critical, error, warning, notice, info, debug');
+    expect(fn () => app(Manager::class)->reportLevel())->toThrow(ConfigurationException::class, 'datadis-client.report_level must be null or one of emergency, alert, critical, error, warning, notice, info, debug.');
 
     config()->set('datadis-client.report_level', null);   // account() checks it first
     config()->set('datadis-client.http.stack', 'bogus');
@@ -78,6 +78,8 @@ it('derives the secret of the guard from the application key the way it says', f
     'a base64 key is decoded' => ['base64:'.base64_encode('0123456789abcdef0123456789abcdef'), '0123456789abcdef0123456789abcdef'],
     'a text is used as it is' => ['0123456789abcdef', '0123456789abcdef'],
     'a base64 that does not decode is used as it is' => ['base64:!!!!!!!!!!!!!!!!!!', 'base64:!!!!!!!!!!!!!!!!!!'],
+    'a base64 with a bad character is not half decoded' => ['base64:AAAAAAAAAAAAAAAA!!', 'base64:AAAAAAAAAAAAAAAA!!'],
+    'sixteen bytes are enough' => ['0123456789abcdef', '0123456789abcdef'],
 ]);
 
 it('uses a secret of its own as it is, and refuses what is not one', function () {
@@ -91,3 +93,40 @@ it('uses a secret of its own as it is, and refuses what is not one', function ()
     config()->set('app.key', '');
     expect(fn () => privately('ledgerKey'))->toThrow(ConfigurationException::class, 'Set datadis-client.ledger.key');
 });
+
+it('refuses an application key shorter than sixteen bytes, and accepts exactly sixteen', function () {
+    config()->set('datadis-client.ledger.key', null);
+
+    config()->set('app.key', '0123456789abcde');   // fifteen
+    expect(fn () => privately('ledgerKey'))->toThrow(ConfigurationException::class, 'too short');
+
+    config()->set('app.key', '0123456789abcdef');   // sixteen
+    expect(privately('ledgerKey'))->toBeString();
+});
+
+it('accepts between none and ten retries, and no more', function (int $max, bool $accepted) {
+    config()->set('datadis-client.http.retries', ['max' => $max, 'base_delay_ms' => 1, 'max_delay_ms' => 1]);
+    $inner = new class implements ClientInterface
+    {
+        public function sendRequest(RequestInterface $request): ResponseInterface
+        {
+            throw new LogicException('not sent');
+        }
+    };
+
+    if (! $accepted) {
+        expect(fn () => privately('withRetries', $inner))->toThrow(ConfigurationException::class, 'between 0 and 10');
+
+        return;
+    }
+
+    $client = privately('withRetries', $inner);
+    // None is the client itself, unwrapped; any other is wrapped in the retrying one.
+    expect($max === 0 ? $client === $inner : $client instanceof RetryingClient)->toBeTrue();
+})->with([[-1, false], [0, true], [1, true], [10, true], [11, false]]);
+
+it('refuses delays that are not positive or that shrink', function (int $base, int $longest) {
+    config()->set('datadis-client.http.retries', ['max' => 1, 'base_delay_ms' => $base, 'max_delay_ms' => $longest]);
+
+    expect(fn () => privately('withRetries', Mockery::mock(ClientInterface::class)))->toThrow(ConfigurationException::class, 'delays must be positive');
+})->with([[0, 5], [-1, 5], [10, 5]]);
