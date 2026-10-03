@@ -57,9 +57,7 @@ final class Importer
             $lock->block(2);
         } catch (LockTimeoutException $e) {
             throw new LedgerUnavailableException('Another import did not finish: import the history from one process.', previous: $e);
-        } catch (ConfigurationException|InvalidArgumentException $e) {
-            throw $e;
-        } catch (Throwable $e) {
+        } catch (Throwable $e) {   // the settings and the secret were checked building the client: what is left is the cache
             throw new LedgerUnavailableException('The lock of the import could not be taken: the cache failed.', previous: $e);
         }
 
