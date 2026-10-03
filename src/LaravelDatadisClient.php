@@ -20,6 +20,7 @@ use Lenorix\DatadisClient\DatadisConfig;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\InvalidRequestException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
+use Lenorix\DatadisClient\Exceptions\UnsupportedOperationException;
 use Lenorix\DatadisClient\Guard\LedgerEvent;
 use Lenorix\DatadisClient\Guard\RequestFingerprinter;
 use Lenorix\DatadisClient\Guard\RequestLedger;
@@ -174,6 +175,7 @@ class LaravelDatadisClient
      *
      * @throws InvalidArgumentException when the account is not configured
      * @throws InvalidRequestException when a value is not valid, the range is reversed or `$at` is more than ten minutes in the future
+     * @throws UnsupportedOperationException when the account uses API v1, which has no reactive data
      * @throws LedgerUnavailableException when the guard's store fails, or another import does not finish
      */
     public function rememberReactive(

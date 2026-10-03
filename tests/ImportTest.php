@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\TransportException;
+use Lenorix\DatadisClient\Exceptions\UnsupportedOperationException;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient;
@@ -111,4 +112,13 @@ it('holds the import lock for thirty seconds and waits two for another import, a
     expect($held)->toBe(30);
     expect($waits)->toBe(2);
     expect($name)->toStartWith('datadis_import_')->not->toContain('00000000T');
+});
+
+it('refuses to remember a reactive energy query for an account on API v1, which has none', function () {
+    config()->set('datadis-client.accounts.default.api_version', 'v1');
+
+    expect(fn () => Datadis::rememberReactive(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))
+        ->toThrow(UnsupportedOperationException::class, 'only in API v2');
+    // ... and the maximum power one, which v1 has, is still remembered.
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
 });

@@ -4,7 +4,8 @@ All notable changes to `laravel-datadis-client` will be documented in this file.
 
 ## Unreleased
 
-- **Requires `lenorix/datadis-client` ^0.6.1.**
+- **Requires `lenorix/datadis-client` ^0.6.2.** Among its fixes, `availableAt` and the blocked-until lookups follow the Madrid clock through a change of hour, and a token the client dropped is never used again.
+- **Reactive energy needs API v2**: `rememberReactive()` throws an `UnsupportedOperationException` for an account on v1, as `getReactiveData()` does.
 - **`DatadisLedgerChanged` event** for every query the guard claims, releases or imports: the account by name, the guard's opaque key, the time and the endpoint, and no personal data. A refusal has no event (it is the `RepetitionWindowException`). What a listener throws is ignored.
 - **`Testing\FakesDatadis`**: `FakesDatadis::fake()` for an application's tests. It answers every endpoint and the login, starts from a fresh HTTP factory (so a second fake replaces the first, where `Http::fake()` keeps the first), puts the application's own answers before the defaults and fails on a URL nobody answers.
 - **Docs for the new refusals**: `NothingToRefreshException`, `OutOfServedRangeException` and `OutOfContractRangeException`, the months of a `RepetitionWindowException` and a sync job that records the months it did not get; reusing the `Supply` of a run; and what `checkLogin()` does.
