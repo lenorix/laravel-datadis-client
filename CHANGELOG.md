@@ -2,6 +2,11 @@
 
 All notable changes to `laravel-datadis-client` will be documented in this file.
 
+## Unreleased
+
+- **Requires `lenorix/datadis-client` ^0.6.1.**
+- **The open data client follows the application's clock too**: `publicApi()` passes it the same clock as the private client, so a test that travels in time sees both agree about the token they share.
+
 ## 0.2.0 - 2026-10-02
 
 - **Requires `lenorix/datadis-client` ^0.5.0**, whose ledger takes one store for everything it reads and writes. The package's store is a complete `AtomicLedgerStore` on Laravel's cache (`get`, `set`, `delete`, `add`). `rememberConsumption()`, `rememberMaxPower()` and `rememberReactive()` delegate to the client's own imports; an import takes one lock for the account, named from a keyed hash of the username. A value Datadis would not accept, a reversed range or a time in the future now throws an `InvalidRequestException` (it was an `InvalidArgumentException`).

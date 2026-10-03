@@ -103,7 +103,7 @@ class LaravelDatadisClient
         $settings = $this->settings($name ??= $this->defaultAccount())
             ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
 
-        return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http($settings), tokenCache: $this->store());
+        return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http($settings), tokenCache: $this->store(), clock: $this->clock);
     }
 
     /**
