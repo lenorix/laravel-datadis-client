@@ -310,7 +310,7 @@ FakesDatadis::fake([
 ]);
 ```
 
-`FakesDatadis::fake()` answers every endpoint of the client and the login, starts from a fresh HTTP factory (`Http::fake()` accumulates stubs, and the first one that matches wins, so a second fake would be ignored), puts your answers before the defaults, and fails on a URL nobody answers instead of reaching Datadis. `supply: [...]` changes fields of its default supply, and `FakesDatadis::token()` is a fake token for a test that needs one.
+`FakesDatadis::fake()` answers every endpoint of the client and the login, starts from a fresh HTTP factory (`Http::fake()` accumulates stubs, and the first one that matches wins, so a second fake would be ignored), puts your answers before the defaults, and fails on a URL nobody answers instead of reaching Datadis. It forces the package onto Laravel's HTTP client for the test (outside the testing environment it would send through plain Guzzle, which cannot be faked), and it replaces every fake the test had before, for any service: call it first, then add other services with `Http::fake()`, or pass them in its answers. `supply: [...]` changes fields of its default supply, and `FakesDatadis::token()` is a fake token for a test that needs one.
 
 - Do not set `DATADIS_HTTP_STACK=guzzle` in a `.env` your tests load: the package refuses to build the client, because a test would reach the real Datadis.
 - Harmless reads are retried with real waits (1 and 2 seconds by default). In tests that fail a call, set `config()->set('datadis-client.http.retries', ['max' => 0])`, or the delays to 1 ms (`'base_delay_ms' => 1, 'max_delay_ms' => 1`), so they do not sleep.

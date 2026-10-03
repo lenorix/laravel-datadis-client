@@ -110,3 +110,13 @@ it('makes a token shaped like the real one: unsigned header, three claims, no pa
     expect($signature)->toBe('signature');
     expect(FakesDatadis::token())->not->toContain('=');
 });
+
+it('fakes the calls whatever the environment, by forcing the package onto Laravel\'s HTTP client', function () {
+    // Outside the testing environment the package sends through plain Guzzle, which Http::fake() never sees.
+    app()['env'] = 'production';
+    config()->set('datadis-client.http.stack', 'guzzle');   // even a stray setting for Guzzle
+
+    FakesDatadis::fake();
+
+    expect(app(DatadisClient::class)->getSupplies()->records)->toHaveCount(1);
+});

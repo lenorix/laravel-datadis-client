@@ -40,6 +40,7 @@ FakesDatadis::fake([
 
 - **It starts from a fresh HTTP factory.** `Http::fake()` accumulates stubs and the first one that matches wins, so a second fake after a first one is silently ignored. Call `FakesDatadis::fake()` again and the new one replaces the old.
 - **Your answers go first**, so they win over the defaults. Change the default supply with `supply: ['validDateFrom' => '2026/10/01', 'pointType' => 3]`; its CUPS is `FakesDatadis::CUPS`.
+- **It forces the package onto Laravel's HTTP client** (`datadis-client.http.stack` = `laravel`) for the test: outside the testing environment the package would send through plain Guzzle, which `Http::fake()` never sees. It replaces every fake the test had before, for any service: call it first, then add other services with `Http::fake()` or pass them in the answers.
 - **A URL nobody answers fails** (`Http::preventStrayRequests()`) instead of reaching Datadis.
 - **It does not touch the cache**: use `cache.default` as `array`, which Laravel empties between tests.
 - **The login** answers a JWT as text, `FakesDatadis::token()`: `iat` is `now()` and `exp` a day later, so a test that travels in time gets a token of its day. Any `header.payload.signature` with a numeric `exp` works; the signature is not verified. A token that has expired, or is about to (within about two minutes), is not reused: the client logs in again.

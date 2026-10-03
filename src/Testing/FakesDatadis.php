@@ -14,6 +14,11 @@ use Illuminate\Support\Facades\Http;
  * login answers with a token whose `exp` is a day after `now()`, so a test that travels in time gets a token of its day;
  * and a URL nobody answers fails (`Http::preventStrayRequests()`) instead of reaching Datadis.
  *
+ * It forces the package onto Laravel's HTTP client (`datadis-client.http.stack` = `laravel`) for the test, since only that one
+ * can be faked; outside the testing environment the package would otherwise send through plain Guzzle. It replaces every fake
+ * the test had before, for any service (a new factory, and stray requests refused): call it first, then add the other services
+ * with `Http::fake()` or pass them in `$answers`.
+ *
  * It does not touch the cache: a token or a guard entry from an earlier test stays where it was (use the `array` store,
  * which Laravel empties between tests).
  */
@@ -28,6 +33,10 @@ final class FakesDatadis
      */
     public static function fake(array $answers = [], array $supply = []): Factory
     {
+        // Outside the testing environment the package sends through plain Guzzle, which Http::fake() never sees, and a test would
+        // reach the real Datadis with the credentials of the .env: force Laravel's HTTP client, whatever the setting says.
+        config()->set('datadis-client.http.stack', 'laravel');
+
         $factory = new Factory;
         Http::swap($factory);
         Http::preventStrayRequests();
