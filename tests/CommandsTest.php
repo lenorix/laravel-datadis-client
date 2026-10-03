@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Commands\DatadisCommand;
+use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 use Lenorix\LaravelDatadisClient\Tests\Support\FormatsOnceOutputStyle;
 use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -19,11 +20,8 @@ function fakeForCommands(array $answers = []): void
 {
     $json = fn (array $body) => Http::response($body);
 
-    Http::fake($answers + [
-        '*/nikola-auth/tokens/login' => Http::response(fakeToken(), 200, ['Content-Type' => 'text/plain']),
-        '*/get-supplies*' => $json(['supplies' => [[
-            'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
-        ]], 'distributorError' => []]),
+    // The shipped fake, with the rows the tables of the commands need: the answers of the test first, then these, then its defaults.
+    FakesDatadis::fake($answers + [
         '*/get-contract-detail*' => $json(['contract' => [[
             'cups' => CUPS, 'distributor' => 'A DISTRIBUTOR', 'marketer' => 'A MARKETER', 'accessFare' => 'BAJA TENSION y POTENCIA <= 15 kW',
             'contractedPowerkW' => [3.45, 3.45], 'startDate' => '2020/01/01', 'endDate' => '',
@@ -37,7 +35,7 @@ function fakeForCommands(array $answers = []): void
         ]], 'distributorError' => []]),
         '*/new-authorization*' => Http::response('Authorization created', 200, ['Content-Type' => 'text/plain']),
         '*/cancel-authorization*' => Http::response('Authorization cancelled', 200, ['Content-Type' => 'text/plain']),
-    ]);
+    ], supply: ['distributor' => 'X']);   // another name than the contract's, so a table cannot show the other's
 }
 
 /** @return array{int, string} the exit code and everything the command printed */

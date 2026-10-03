@@ -11,7 +11,7 @@ use Lenorix\DatadisClient\Exceptions\TransportException;
 use Lenorix\DatadisClient\Exceptions\UnsupportedOperationException;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
-use Lenorix\LaravelDatadisClient\LaravelDatadisClient;
+use Lenorix\LaravelDatadisClient\Internal\Importer;
 
 it('sends nothing when it imports', function () {
     fakeEverything();
@@ -65,7 +65,7 @@ it('imports on a cache repository that is not Laravel\'s, without a lock', funct
 });
 
 it('gives an import a client that cannot send, whatever the environment says', function () {
-    $client = (fn () => $this->clientForImport(null))->call(app(LaravelDatadisClient::class));
+    $client = (fn () => $this->clientFor(null))->call(new Importer(app()));
 
     // Not a login, not a data query: the transport is the one that throws ("An import never sends a request"), so nothing can reach Datadis or Http::fake().
     expect(fn () => $client->checkLogin())->toThrow(TransportException::class, 'LogicException');   // the client reports the transport's failure

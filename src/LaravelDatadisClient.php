@@ -4,16 +4,7 @@ declare(strict_types=1);
 
 namespace Lenorix\LaravelDatadisClient;
 
-use Closure;
 use DateTimeInterface;
-use Illuminate\Cache\NullStore;
-use Illuminate\Cache\Repository as CacheRepository;
-use Illuminate\Contracts\Cache\Factory as CacheFactory;
-use Illuminate\Contracts\Cache\LockProvider;
-use Illuminate\Contracts\Cache\LockTimeoutException;
-use Illuminate\Contracts\Cache\Repository;
-use Illuminate\Contracts\Config\Repository as Config;
-use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as Http;
 use InvalidArgumentException;
@@ -23,30 +14,29 @@ use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\InvalidRequestException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\DatadisClient\Exceptions\UnsupportedOperationException;
-use Lenorix\DatadisClient\Guard\LedgerEvent;
-use Lenorix\DatadisClient\Guard\RequestFingerprinter;
-use Lenorix\DatadisClient\Guard\RequestLedger;
 use Lenorix\DatadisClient\PublicApiClient;
 use Lenorix\DatadisClient\Time\Month;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\MeasurementType;
 use Lenorix\DatadisClient\Values\Nif;
-use Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged;
 use Lenorix\LaravelDatadisClient\Internal\AccountSettings;
+use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\Internal\HttpClients;
-use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
+use Lenorix\LaravelDatadisClient\Internal\Importer;
+use Lenorix\LaravelDatadisClient\Internal\ReportLevel;
 use Lenorix\LaravelDatadisClient\Support\LaravelClock;
-use LogicException;
 use Psr\Clock\ClockInterface;
-use Psr\Http\Client\ClientInterface;
-use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\ResponseInterface;
 
 /**
  * Builds the DatadisClient of each configured account on the application's HTTP client and cache.
  *
  * Calls it does not know go to the default account, so the facade reads like the client itself: that
  * includes the operations that change data (authorizations, partner users), which the client offers on purpose.
+ *
+ * It only decides what to build and hands the rest to small internal classes (the settings of an account, its HTTP client,
+ * the guard's cache and ledger, the imports). A facade holds this object for the whole process, so none of them keeps the
+ * configuration, the cache, the HTTP factory or the event dispatcher: each takes them from the container on every call, and
+ * `Http::fake()` or `Event::fake()` set after it was built still apply.
  *
  * @mixin DatadisClient
  */
@@ -58,20 +48,25 @@ class LaravelDatadisClient
     /** The account whose credentials `services.datadis` provides. */
     public const string SERVICES_ACCOUNT = 'default';
 
-    /**
-     * The collaborators are taken from the container on every call, not kept: a facade holds this
-     * object for the whole process, and Http::fake() swaps the HTTP factory after it was built.
-     */
     private readonly ClockInterface $clock;
 
     private readonly AccountSettings $accounts;
 
     private readonly HttpClients $http;
 
-    public function __construct(private readonly Application $app)
+    private readonly GuardLedgers $guard;
+
+    private readonly ReportLevel $reportLevel;
+
+    private readonly Importer $importer;
+
+    public function __construct(Application $app)
     {
         $this->accounts = new AccountSettings($app);
         $this->http = new HttpClients($app);
+        $this->guard = new GuardLedgers($app);
+        $this->reportLevel = new ReportLevel($app);
+        $this->importer = new Importer($app);
         // The application's time (`now()`, `travelTo()`), not the system's: the guard, the daily range and the token follow it.
         $this->clock = new LaravelClock;
     }
@@ -96,8 +91,8 @@ class LaravelDatadisClient
         return DatadisClient::fromArray(
             $settings,
             http: $this->http->make($settings),
-            tokenCache: $this->store(),
-            ledger: $this->ledger($name),
+            tokenCache: $this->guard->store(),
+            ledger: $this->guard->ledger($name),
             clock: $this->clock,
         );
     }
@@ -115,7 +110,7 @@ class LaravelDatadisClient
         $settings = $this->accounts->find($name ??= $this->accounts->defaultName())
             ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
 
-        return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http->make($settings), tokenCache: $this->store(), clock: $this->clock);
+        return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http->make($settings), tokenCache: $this->guard->store(), clock: $this->clock);
     }
 
     /**
@@ -147,7 +142,7 @@ class LaravelDatadisClient
         ?DateTimeInterface $at = null,
         ?string $account = null,
     ): bool {
-        return $this->exclusively($account, fn (DatadisClient $client): bool => $client->rememberConsumptionData(
+        return $this->importer->run($account, fn (DatadisClient $client): bool => $client->rememberConsumptionData(
             $at ?? $this->clock->now(), $cups, $distributorCode, $pointType, $startDate, $endDate, $measurementType, $authorizedNif,
         ));
     }
@@ -170,7 +165,7 @@ class LaravelDatadisClient
         ?DateTimeInterface $at = null,
         ?string $account = null,
     ): bool {
-        return $this->exclusively($account, fn (DatadisClient $client): bool => $client->rememberMaxPower(
+        return $this->importer->run($account, fn (DatadisClient $client): bool => $client->rememberMaxPower(
             $at ?? $this->clock->now(), $cups, $distributorCode, $startDate, $endDate,
         ));
     }
@@ -194,86 +189,9 @@ class LaravelDatadisClient
         ?DateTimeInterface $at = null,
         ?string $account = null,
     ): bool {
-        return $this->exclusively($account, fn (DatadisClient $client): bool => $client->rememberReactiveData(
+        return $this->importer->run($account, fn (DatadisClient $client): bool => $client->rememberReactiveData(
             $at ?? $this->clock->now(), $cups, $distributorCode, $startDate, $endDate,
         ));
-    }
-
-    /**
-     * Runs an import with nobody else importing for the account: the ledger keeps the newest attempt of a query, but
-     * two imports that both read the held attempt before either writes would leave the older time, since the
-     * overwrite is not a compare and set. One lock for the account, named from a keyed hash, never from the NIF.
-     * A store without locks cannot serialise them: then only one process may import.
-     *
-     * @template T
-     *
-     * @param  Closure(DatadisClient): T  $import
-     * @return T
-     *
-     * @throws LedgerUnavailableException when another import of the account does not finish
-     */
-    private function exclusively(?string $account, Closure $import): mixed
-    {
-        $client = $this->clientForImport($account);
-        $store = $this->store();
-        $provider = $store instanceof CacheRepository ? $store->getStore() : null;
-
-        if (! $provider instanceof LockProvider) {
-            return $import($client);
-        }
-
-        try {
-            return $provider->lock($this->importLockName($this->accounts->username($account)), 30)->block(2, fn () => $import($client));
-        } catch (LockTimeoutException $e) {
-            throw new LedgerUnavailableException('Another import did not finish: import the history from one process.', previous: $e);
-        }
-    }
-
-    /**
-     * The client an import needs: the account's settings and the ledger, and no HTTP stack, since nothing is sent. A wrong
-     * `http` setting must not stop an import, and no request can leave from it.
-     *
-     * @throws InvalidArgumentException when the account is not configured
-     * @throws ConfigurationException when its settings are wrong
-     */
-    private function clientForImport(?string $name): DatadisClient
-    {
-        $this->reportLevel();
-        $settings = $this->accounts->find($name ?? $this->accounts->defaultName())
-            ?? throw new InvalidArgumentException('The Datadis account ['.($name ?? $this->accounts->defaultName()).'] is not configured in services.datadis or datadis-client.accounts.');
-
-        // A client that cannot send: an import never reaches Datadis, whatever the HTTP settings or the test environment say.
-        $mute = new class implements ClientInterface
-        {
-            public function sendRequest(RequestInterface $request): ResponseInterface
-            {
-                throw new LogicException('An import never sends a request.');
-            }
-        };
-
-        return DatadisClient::fromArray($settings, http: $mute, ledger: $this->ledger($name ?? $this->accounts->defaultName()), clock: $this->clock);
-    }
-
-    private function importLockName(string $username): string
-    {
-        return 'datadis_import_'.substr(hash_hmac('sha256', $username, $this->ledgerKey()), 0, 40);
-    }
-
-    /**
-     * @param  string  $account  the name of the account in `datadis-client.accounts`, which the events carry instead of the username
-     */
-    private function ledger(string $account): RequestLedger
-    {
-        return new RequestLedger(
-            new LaravelAtomicStore($this->store()),
-            new RequestFingerprinter($this->ledgerKey()),
-            $this->clock,
-            onChange: function (LedgerEvent $change) use ($account): void {
-                // The dispatcher is taken now, not when the ledger is built: Event::fake() swaps it after the client exists.
-                // What a listener throws is ignored by the ledger, so a listener never decides whether a query goes.
-                $this->app->make(Dispatcher::class)->dispatch(new DatadisLedgerChanged($account, $change->kind, $change->key, $change->at, $change->endpoint, $change->lastAttemptAt, $change->availableAt));
-            },
-        );
     }
 
     /**
@@ -283,17 +201,7 @@ class LaravelDatadisClient
      */
     public function reportLevel(): ?string
     {
-        $level = $this->config()->get('datadis-client.report_level');
-
-        if ($level === null || $level === '') {
-            return null;
-        }
-
-        if (! is_string($level) || ! in_array($level = strtolower(trim($level)), self::REPORT_LEVELS, true)) {
-            throw new ConfigurationException('datadis-client.report_level must be null or one of '.implode(', ', self::REPORT_LEVELS).'.');
-        }
-
-        return $level;
+        return $this->reportLevel->level();
     }
 
     /**
@@ -302,57 +210,5 @@ class LaravelDatadisClient
     public function __call(string $method, array $parameters): mixed
     {
         return $this->account()->{$method}(...$parameters);
-    }
-
-    private function config(): Config
-    {
-        return $this->app->make(Config::class);
-    }
-
-    /**
-     * Laravel's own cache, the default store (`CACHE_STORE`): the token and the 24 hour guard are not configured apart,
-     * so they cannot end up on a store the workers do not share by a setting that is easy to forget.
-     */
-    private function store(): Repository
-    {
-        $repository = $this->app->make(CacheFactory::class)->store();
-
-        // A store that remembers nothing would refuse every guarded query, the first one included, as already sent.
-        if ($repository instanceof CacheRepository && $repository->getStore() instanceof NullStore) {
-            throw new ConfigurationException('The default cache store is the null driver, which remembers nothing: the 24 hour guard and the login token need a real one (CACHE_STORE=redis or database).');
-        }
-
-        // The same store without the event dispatcher: Laravel's cache events (and Telescope's cache watcher)
-        // carry the keys and the values, and the token is one of them.
-        return $repository instanceof CacheRepository ? new CacheRepository($repository->getStore()) : $repository;
-    }
-
-    private function ledgerKey(): string
-    {
-        $own = $this->config()->get('datadis-client.ledger.key');
-
-        // Anything but a text must fail: ignoring it would key the guard with the application key without saying so.
-        if ($own !== null && ! is_string($own)) {
-            throw new ConfigurationException('datadis-client.ledger.key must be a text or null, '.get_debug_type($own).' given.');
-        }
-
-        if ($own !== null && $own !== '') {
-            return $own;
-        }
-
-        $key = $this->config()->get('app.key');
-
-        if (! is_string($key) || $key === '') {
-            throw new ConfigurationException('Set datadis-client.ledger.key (DATADIS_LEDGER_KEY) or the application key: the 24 hour guard needs a secret.');
-        }
-
-        $bytes = str_starts_with($key, 'base64:') ? (base64_decode(substr($key, 7), true) ?: $key) : $key;
-
-        if (strlen($bytes) < 16) {
-            throw new ConfigurationException('The application key is too short to key the 24 hour guard: set datadis-client.ledger.key (DATADIS_LEDGER_KEY) to a secret of at least 16 bytes.');
-        }
-
-        // Derived, not the application key itself: the key of the guard is used for nothing else.
-        return hash_hmac('sha256', 'laravel-datadis-client: 24 hour guard', $bytes, true);
     }
 }

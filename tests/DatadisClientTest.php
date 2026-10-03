@@ -28,6 +28,7 @@ use Lenorix\DatadisClient\PublicApiClient;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
+use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClientServiceProvider;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
@@ -332,9 +333,9 @@ it('never reaches the network on the guzzle stack unless a test queues an answer
 });
 
 it('sends the calls through plain Guzzle unless the test environment asks for Laravel\'s stack', function (string $environment, bool $laravelStack) {
-    config()->set('datadis-client.http.stack', null);
     app()['env'] = $environment;
     fakeDatadis();
+    config()->set('datadis-client.http.stack', null);   // after the fake, which forces Laravel's stack: this is what is under test
 
     if ($laravelStack) {
         expect(app(DatadisClient::class)->getSupplies()->records)->toHaveCount(1);
@@ -625,14 +626,14 @@ it('refuses a guard key that is not a text, instead of falling back to the appli
 it('keys the guard with a secret derived from the application key, not the key itself', function () {
     config()->set('datadis-client.ledger.key', null);
     config()->set('app.key', str_repeat('a', 32));
-    $secret = (fn () => $this->ledgerKey())->call(app(Manager::class));
+    $secret = (new GuardLedgers(app()))->secret();
 
     expect(strlen($secret))->toBe(32);
     expect($secret)->not->toBe(str_repeat('a', 32));
     expect($secret)->toBe(hash_hmac('sha256', 'laravel-datadis-client: 24 hour guard', str_repeat('a', 32), true));
 
     config()->set('datadis-client.ledger.key', 'my-own-guard-secret');
-    expect((fn () => $this->ledgerKey())->call(app(Manager::class)))->toBe('my-own-guard-secret');
+    expect((new GuardLedgers(app()))->secret())->toBe('my-own-guard-secret');
 });
 
 it('refuses an application key too short to key the guard', function () {

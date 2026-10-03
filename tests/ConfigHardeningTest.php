@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Http\RetryingClient;
+use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\Internal\Retries;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient as Manager;
 use Psr\Http\Client\ClientInterface;
@@ -74,7 +75,7 @@ it('derives the secret of the guard from the application key the way it says', f
     config()->set('datadis-client.ledger.key', '');
     config()->set('app.key', $appKey);
 
-    expect(privately('ledgerKey'))->toBe(hash_hmac('sha256', 'laravel-datadis-client: 24 hour guard', $bytes, true));
+    expect((new GuardLedgers(app()))->secret())->toBe(hash_hmac('sha256', 'laravel-datadis-client: 24 hour guard', $bytes, true));
 })->with([
     'a base64 key is decoded' => ['base64:'.base64_encode('0123456789abcdef0123456789abcdef'), '0123456789abcdef0123456789abcdef'],
     'a text is used as it is' => ['0123456789abcdef', '0123456789abcdef'],
@@ -85,24 +86,24 @@ it('derives the secret of the guard from the application key the way it says', f
 
 it('uses a secret of its own as it is, and refuses what is not one', function () {
     config()->set('datadis-client.ledger.key', 'my own secret of enough bytes');
-    expect(privately('ledgerKey'))->toBe('my own secret of enough bytes');
+    expect((new GuardLedgers(app()))->secret())->toBe('my own secret of enough bytes');
 
     config()->set('datadis-client.ledger.key', 5);
-    expect(fn () => privately('ledgerKey'))->toThrow(ConfigurationException::class, 'must be a text or null, int given');
+    expect(fn () => (new GuardLedgers(app()))->secret())->toThrow(ConfigurationException::class, 'must be a text or null, int given');
 
     config()->set('datadis-client.ledger.key', null);
     config()->set('app.key', '');
-    expect(fn () => privately('ledgerKey'))->toThrow(ConfigurationException::class, 'Set datadis-client.ledger.key');
+    expect(fn () => (new GuardLedgers(app()))->secret())->toThrow(ConfigurationException::class, 'Set datadis-client.ledger.key');
 });
 
 it('refuses an application key shorter than sixteen bytes, and accepts exactly sixteen', function () {
     config()->set('datadis-client.ledger.key', null);
 
     config()->set('app.key', '0123456789abcde');   // fifteen
-    expect(fn () => privately('ledgerKey'))->toThrow(ConfigurationException::class, 'too short');
+    expect(fn () => (new GuardLedgers(app()))->secret())->toThrow(ConfigurationException::class, 'too short');
 
     config()->set('app.key', '0123456789abcdef');   // sixteen
-    expect(privately('ledgerKey'))->toBeString();
+    expect((new GuardLedgers(app()))->secret())->toBeString();
 });
 
 it('accepts between none and ten retries, and no more', function (int $max, bool $accepted) {
