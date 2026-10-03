@@ -34,6 +34,7 @@ use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\DatadisClient\Values\MeasurementType;
 use Lenorix\DatadisClient\Values\Nif;
 use Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged;
+use Lenorix\LaravelDatadisClient\Internal\AccountSettings;
 use Lenorix\LaravelDatadisClient\Support\LaravelAtomicStore;
 use Lenorix\LaravelDatadisClient\Support\LaravelClock;
 use LogicException;
@@ -64,8 +65,11 @@ class LaravelDatadisClient
      */
     private readonly ClockInterface $clock;
 
+    private readonly AccountSettings $accounts;
+
     public function __construct(private readonly Application $app)
     {
+        $this->accounts = new AccountSettings($app);
         // The application's time (`now()`, `travelTo()`), not the system's: the guard, the daily range and the token follow it.
         $this->clock = new LaravelClock;
     }
@@ -80,8 +84,8 @@ class LaravelDatadisClient
     public function account(?string $name = null): DatadisClient
     {
         $this->reportLevel();
-        $name ??= $this->defaultAccount();
-        $settings = $this->settings($name);
+        $name ??= $this->accounts->defaultName();
+        $settings = $this->accounts->find($name);
 
         if ($settings === null) {
             throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
@@ -106,7 +110,7 @@ class LaravelDatadisClient
     public function publicApi(?string $name = null): PublicApiClient
     {
         $this->reportLevel();
-        $settings = $this->settings($name ??= $this->defaultAccount())
+        $settings = $this->accounts->find($name ??= $this->accounts->defaultName())
             ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
 
         return new PublicApiClient(DatadisConfig::fromArray($settings), $this->http($settings), tokenCache: $this->store(), clock: $this->clock);
@@ -217,7 +221,7 @@ class LaravelDatadisClient
         }
 
         try {
-            return $provider->lock($this->importLockName($this->username($account)), 30)->block(2, fn () => $import($client));
+            return $provider->lock($this->importLockName($this->accounts->username($account)), 30)->block(2, fn () => $import($client));
         } catch (LockTimeoutException $e) {
             throw new LedgerUnavailableException('Another import did not finish: import the history from one process.', previous: $e);
         }
@@ -233,8 +237,8 @@ class LaravelDatadisClient
     private function clientForImport(?string $name): DatadisClient
     {
         $this->reportLevel();
-        $settings = $this->settings($name ?? $this->defaultAccount())
-            ?? throw new InvalidArgumentException('The Datadis account ['.($name ?? $this->defaultAccount()).'] is not configured in services.datadis or datadis-client.accounts.');
+        $settings = $this->accounts->find($name ?? $this->accounts->defaultName())
+            ?? throw new InvalidArgumentException('The Datadis account ['.($name ?? $this->accounts->defaultName()).'] is not configured in services.datadis or datadis-client.accounts.');
 
         // A client that cannot send: an import never reaches Datadis, whatever the HTTP settings or the test environment say.
         $mute = new class implements ClientInterface
@@ -245,7 +249,7 @@ class LaravelDatadisClient
             }
         };
 
-        return DatadisClient::fromArray($settings, http: $mute, ledger: $this->ledger($name ?? $this->defaultAccount()), clock: $this->clock);
+        return DatadisClient::fromArray($settings, http: $mute, ledger: $this->ledger($name ?? $this->accounts->defaultName()), clock: $this->clock);
     }
 
     private function importLockName(string $username): string
@@ -268,12 +272,6 @@ class LaravelDatadisClient
                 $this->app->make(Dispatcher::class)->dispatch(new DatadisLedgerChanged($account, $change->kind, $change->key, $change->at, $change->endpoint, $change->lastAttemptAt, $change->availableAt));
             },
         );
-    }
-
-    /** The username the guard keys its entries on: the account's, trimmed and in capitals (the account is known to exist). */
-    private function username(?string $name): string
-    {
-        return DatadisConfig::fromArray($this->settings($name ?? $this->defaultAccount()) ?? [])->username();
     }
 
     /**
@@ -302,43 +300,6 @@ class LaravelDatadisClient
     public function __call(string $method, array $parameters): mixed
     {
         return $this->account()->{$method}(...$parameters);
-    }
-
-    /**
-     * The settings of an account. The credentials of the account named `default` follow Laravel's
-     * convention for third-party services, `config/services.php` (`services.datadis`), and win over the
-     * same keys of `datadis-client.accounts.default`, which stay for the other settings. Choosing
-     * another account as `datadis-client.default` changes which account is used, never its credentials.
-     *
-     * @return array<array-key, mixed>|null
-     */
-    private function settings(string $name): ?array
-    {
-        // A direct lookup, not Laravel's dot notation: an account may be named `tenant.east`.
-        $accounts = $this->config()->get('datadis-client.accounts');
-        $account = is_array($accounts) ? ($accounts[$name] ?? null) : null;
-        $service = $name === self::SERVICES_ACCOUNT ? $this->config()->get('services.datadis') : null;
-
-        if (! is_array($account) && ! is_array($service)) {
-            return null;
-        }
-
-        $account = is_array($account) ? $account : [];
-        $service = array_filter(is_array($service) ? $service : [], fn ($value) => ! is_string($value) ? $value !== null : trim($value) !== '');
-
-        // Datadis reads `api_version` and `api-version` alike and prefers the first: drop the account's `api_version` when services
-        // sets it as `api-version` (the other way round, the account's dash spelling loses to services' underscore one by itself).
-        $spelled = array_map(static fn ($key) => str_replace('-', '_', (string) $key), array_keys($service));
-        $account = array_filter($account, static fn ($key) => ! in_array($key, $spelled, true), ARRAY_FILTER_USE_KEY);
-
-        return array_replace($account, $service);
-    }
-
-    private function defaultAccount(): string
-    {
-        $default = $this->config()->get('datadis-client.default', 'default');
-
-        return is_string($default) && trim($default) !== '' ? trim($default) : 'default';
     }
 
     /**
