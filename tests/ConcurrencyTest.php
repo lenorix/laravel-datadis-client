@@ -111,7 +111,7 @@ it('lets exactly one of several simultaneous processes send a query, on a file c
     $worker = __DIR__.'/Support/claim-worker.php';
 
     for ($round = 0; $round < 3; $round++) {
-        $directory = sys_get_temp_dir().'/datadis-claim-'.bin2hex(random_bytes(6));
+        $directory = temporaryPath('datadis-claim');
         $barrier = $directory.'.go';
         mkdir($directory);
         $processes = [];

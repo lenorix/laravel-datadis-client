@@ -5,12 +5,15 @@ use Illuminate\Cache\ArrayStore;
 use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
 use Lenorix\DatadisClient\Exceptions\TransportException;
 use Lenorix\DatadisClient\Exceptions\UnsupportedOperationException;
 use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged;
 use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient as Datadis;
 use Lenorix\LaravelDatadisClient\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
@@ -103,9 +106,7 @@ class NotingLockStore extends ArrayStore
 
 it('holds the import lock for thirty seconds and waits two for another import, as the README says', function () {
     NotingLockStore::$noted = [];
-    Cache::extend('noting', fn () => Cache::repository(new NotingLockStore));
-    config()->set('cache.stores.noting', ['driver' => 'noting']);
-    config()->set('cache.default', 'noting');
+    useCacheStore('noting', new NotingLockStore);
 
     Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour'));
 
@@ -171,9 +172,7 @@ class ReleaseDownStore extends ArrayStore
 }
 
 it('says the cache failed when it cannot take the import lock, not a bare exception of the store', function () {
-    Cache::extend('lockdown', fn () => Cache::repository(new LockDownStore));
-    config()->set('cache.stores.lockdown', ['driver' => 'lockdown']);
-    config()->set('cache.default', 'lockdown');
+    useCacheStore('lockdown', new LockDownStore);
 
     try {
         Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour'));
@@ -188,9 +187,7 @@ it('says the cache failed when it cannot take the import lock, not a bare except
 });
 
 it('does not fail an import that is done because the lock could not be released', function () {
-    Cache::extend('releasedown', fn () => Cache::repository(new ReleaseDownStore));
-    config()->set('cache.stores.releasedown', ['driver' => 'releasedown']);
-    config()->set('cache.default', 'releasedown');
+    useCacheStore('releasedown', new ReleaseDownStore);
 
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
 });
@@ -218,4 +215,27 @@ it('keeps the credentials out of the arguments of a stack trace, which error pag
     expect($traceOf(fn () => importer()->lockName('12345678Z')))->not->toContain('12345678Z');
 
     ini_set('zend.exception_ignore_args', $before);
+});
+
+it('imports for the default account when it is not the one named default: its lock, its name in the event', function () {
+    Sleep::fake(syncWithCarbon: true);
+    config()->set('datadis-client.accounts', [
+        'default' => ['username' => '00000000T', 'password' => 'x'],
+        'other' => ['username' => nifOf(9), 'password' => 'y'],
+    ]);
+    config()->set('datadis-client.default', 'other');
+    $events = [];
+    Event::listen(DatadisLedgerChanged::class, function ($event) use (&$events) {
+        $events[] = $event;
+    });
+
+    // The lock of the default account's user (not of the account called default) is the one this import needs.
+    $lock = Cache::lock(importer()->lockName(nifOf(9)), 5);
+    expect($lock->get())->toBeTrue();
+    expect(fn () => Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))
+        ->toThrow(LedgerUnavailableException::class, 'import the history from one process');
+    $lock->release();
+
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
+    expect(array_map(fn ($event) => $event->account, $events))->toBe(['other']);
 });

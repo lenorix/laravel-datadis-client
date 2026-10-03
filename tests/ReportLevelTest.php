@@ -47,7 +47,7 @@ it('sets the configured level on the exception handler', function () {
 });
 
 it('refuses a report level the logger would reject, without breaking error reporting', function (mixed $level) {
-    $file = sys_get_temp_dir().'/datadis-report-'.bin2hex(random_bytes(4)).'.log';
+    $file = temporaryPath('datadis-report', '.log');
     config()->set('logging.default', 'single');
     config()->set('logging.channels.single', ['driver' => 'single', 'path' => $file]);
     config()->set('datadis-client.report_level', $level);

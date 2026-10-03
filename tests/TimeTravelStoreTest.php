@@ -11,9 +11,7 @@ use Lenorix\LaravelDatadisClient\Tests\Support\NoLockStore;
  * guard does with it decides what a test can promise about time travel.
  */
 it('still refuses after a travelled window on a store that keeps its own time, as Redis does', function () {
-    Cache::extend('owntime', fn () => Cache::repository(new NoLockStore));
-    config()->set('cache.stores.owntime', ['driver' => 'owntime']);
-    config()->set('cache.default', 'owntime');
+    useCacheStore('owntime', new NoLockStore);
     FakesDatadis::fake();
     $client = app(DatadisClient::class);
     $month = monthsAgo(2);

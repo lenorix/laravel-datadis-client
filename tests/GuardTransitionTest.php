@@ -155,9 +155,7 @@ class TtlSpyStore extends ArrayStore
 
 it('keeps an old attempt only for what is left of its window, not for a whole new one', function (int $hoursAgo, int $expected) {
     TtlSpyStore::$ttls = [];
-    Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
-    config()->set('cache.stores.spy', ['driver' => 'spy']);
-    config()->set('cache.default', 'spy');
+    useCacheStore('spy', new TtlSpyStore);
 
     Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable("-{$hoursAgo} hours"));
 
@@ -192,9 +190,7 @@ it('keeps the newest attempt of a history, whatever the order it is imported in'
 
 it('lets the newest attempt of a history set how long the guard waits', function (array $hoursAgo) {
     TtlSpyStore::$ttls = [];
-    Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
-    config()->set('cache.stores.spy', ['driver' => 'spy']);
-    config()->set('cache.default', 'spy');
+    useCacheStore('spy', new TtlSpyStore);
 
     foreach ($hoursAgo as $hours) {
         Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable("-{$hours} hours"));
@@ -213,9 +209,7 @@ it('lets the newest attempt of a history set how long the guard waits', function
 
 it('leaves a held entry whose time is older than the window as it is, since it may be the claim of a worker still being made', function () {
     TtlSpyStore::$ttls = [];
-    Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
-    config()->set('cache.stores.spy', ['driver' => 'spy']);
-    config()->set('cache.default', 'spy');
+    useCacheStore('spy', new TtlSpyStore);
 
     Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-23 hours'));
     $key = array_key_first(array_filter(TtlSpyStore::$ttls, fn ($ttl, $k) => str_starts_with($k, 'datadis_query_'), ARRAY_FILTER_USE_BOTH));
@@ -248,10 +242,11 @@ class BlindOnceStore extends ArrayStore
     }
 }
 
+// A flag left armed by a test that failed before using it must not reach the next one.
+afterEach(fn () => BlindOnceStore::$blind = false);
+
 it('does not take back a newer attempt that appeared while the history was being imported', function () {
-    Cache::extend('blind', fn () => Cache::repository(new BlindOnceStore));
-    config()->set('cache.stores.blind', ['driver' => 'blind']);
-    config()->set('cache.default', 'blind');
+    useCacheStore('blind', new BlindOnceStore);
 
     // A newer attempt is already held (a worker sent it) ...
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
@@ -286,9 +281,7 @@ it('takes a lock per account while it imports, so two imports cannot leave the o
 });
 
 it('imports on a store that cannot lock, which then needs one process', function () {
-    Cache::extend('nolock', fn () => Cache::repository(new NoLockStore));
-    config()->set('cache.stores.nolock', ['driver' => 'nolock']);
-    config()->set('cache.default', 'nolock');
+    useCacheStore('nolock', new NoLockStore);
 
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-3 hours')))->toBeTrue();
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();   // the newer replaces it
@@ -297,9 +290,7 @@ it('imports on a store that cannot lock, which then needs one process', function
 
 it('lives longer than the window for a time a little ahead, so it never expires before its own window', function () {
     TtlSpyStore::$ttls = [];
-    Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
-    config()->set('cache.stores.spy', ['driver' => 'spy']);
-    config()->set('cache.default', 'spy');
+    useCacheStore('spy', new TtlSpyStore);
 
     Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('+500 seconds'));
 
@@ -352,9 +343,7 @@ it('is one guard entry for maximum power and reactive energy, as for the client'
 
 it('gives a consumption entry the lifetime left of its window too', function () {
     TtlSpyStore::$ttls = [];
-    Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
-    config()->set('cache.stores.spy', ['driver' => 'spy']);
-    config()->set('cache.default', 'spy');
+    useCacheStore('spy', new TtlSpyStore);
 
     Datadis::rememberConsumption(Cups::fromString(CUPS), '2', 5, monthsAgo(2), at: new DateTimeImmutable('-20 hours'));
 
@@ -385,10 +374,8 @@ class SpyFileStore extends FileStore
 
 it('works on a file store, through its own add(), for both orders of a history', function (array $hoursAgo) {
     SpyFileStore::$ttls = [];
-    $directory = sys_get_temp_dir().'/datadis-file-store-'.bin2hex(random_bytes(4));
-    Cache::extend('spyfile', fn () => Cache::repository(new SpyFileStore(new Filesystem, $directory)));
-    config()->set('cache.stores.spyfile', ['driver' => 'spyfile']);
-    config()->set('cache.default', 'spyfile');
+    $directory = temporaryPath('datadis-file-store');
+    useCacheStore('spyfile', new SpyFileStore(new Filesystem, $directory));
 
     foreach ($hoursAgo as $hours) {
         Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable("-{$hours} hours"));
@@ -412,9 +399,7 @@ it('refuses a reversed range when it remembers', function () {
 });
 
 it('leaves a held attempt of the same time alone when it only finds it while taking the key', function () {
-    Cache::extend('blind', fn () => Cache::repository(new BlindOnceStore));
-    config()->set('cache.stores.blind', ['driver' => 'blind']);
-    config()->set('cache.default', 'blind');
+    useCacheStore('blind', new BlindOnceStore);
     $at = new DateTimeImmutable('-3 hours');
 
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: $at))->toBeTrue();

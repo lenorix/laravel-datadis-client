@@ -588,3 +588,35 @@ it('fails cleanly when the answer to a write is an HTML page, instead of printin
     expect($output)->toContain('the answer is an HTML page');
     expect($output)->not->toContain('Maintenance');   // Datadis's page is described, never quoted
 });
+
+it('shows in the supplies table which ones cannot be queried', function () {
+    fakeForCommands([
+        '*/get-supplies*' => Http::response(['supplies' => [
+            ['cups' => CUPS, 'distributor' => 'GOOD', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => ''],
+            ['cups' => 'ES0000000000000000BB0B', 'distributor' => 'NOPOINT', 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => ''],
+        ], 'distributorError' => []]),
+    ]);
+
+    [$code, $output] = runCommand('datadis:supplies');
+
+    expect($code)->toBe(0);
+    expect($output)->toMatch('/GOOD\s+\|\s+5\s+\|.*\|\s+yes\s+\|/');
+    expect($output)->toMatch('/NOPOINT\s+\|\s+\|.*\|\s+no\s+\|/');
+});
+
+it('refuses a supply with an unusable distributor code before asking for data', function (string $command) {
+    fakeForCommands([
+        '*/get-supplies*' => Http::response(['supplies' => [[
+            'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => 'not a code!', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
+        ]], 'distributorError' => []]),
+    ]);
+
+    [$code, $output] = runCommand($command);
+
+    expect($code)->toBe(1);
+    expect($output)->toContain('cannot see that supply');
+    expect(Http::recorded(fn (Request $r) => str_contains($r->url(), 'get-contract-detail') || str_contains($r->url(), 'get-consumption-data')))->toHaveCount(0);
+})->with([
+    'the contract' => ['datadis:contract '.CUPS],
+    'the consumption' => ['datadis:consumption '.CUPS.' 2026-08'],
+]);

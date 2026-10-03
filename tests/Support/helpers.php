@@ -1,6 +1,9 @@
 <?php
 
+use Illuminate\Contracts\Cache\Store;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Time\Month;
@@ -9,7 +12,6 @@ use Lenorix\LaravelDatadisClient\Internal\AccountSettings;
 use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\Internal\Importer;
 use Lenorix\LaravelDatadisClient\Internal\ReportLevel;
-use Lenorix\LaravelDatadisClient\Support\LaravelClock;
 use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 // A literal, not FakesDatadis::CUPS: a constant here would load that class while Pest boots, before a mutation run can replace it
@@ -74,5 +76,37 @@ function importLockName(): string
 /** An importer wired as the manager wires its own: the classes keep nothing, so a second set makes no difference. */
 function importer(): Importer
 {
-    return new Importer(new AccountSettings(app()), new GuardLedgers(app()), new ReportLevel(app()), new LaravelClock);
+    return new Importer(new AccountSettings(app()), new GuardLedgers(app()), new ReportLevel(app()));
+}
+
+/** Makes a cache store of the test the default one, under a name, as a deployment would configure its own. */
+function useCacheStore(string $name, Store $store): void
+{
+    Cache::extend($name, fn () => Cache::repository($store));
+    config()->set("cache.stores.{$name}", ['driver' => $name]);
+    config()->set('cache.default', $name);
+}
+
+/**
+ * A path in the system's temporary directory, removed (a directory with what it holds, or a file) when the run ends, whatever
+ * the test did: what a failing test leaves behind piles up otherwise.
+ */
+function temporaryPath(string $prefix, string $suffix = ''): string
+{
+    static $made = [];
+    static $registered = false;
+
+    $path = sys_get_temp_dir().'/'.$prefix.'-'.bin2hex(random_bytes(6)).$suffix;
+    $made[] = $path;
+
+    if (! $registered) {
+        $registered = true;
+        register_shutdown_function(function () use (&$made) {
+            foreach ($made as $path) {
+                is_dir($path) ? (new Filesystem)->deleteDirectory($path) : @unlink($path);
+            }
+        });
+    }
+
+    return $path;
 }

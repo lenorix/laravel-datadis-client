@@ -4,6 +4,8 @@ use Illuminate\Support\Carbon;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\RepetitionWindowException;
 use Lenorix\DatadisClient\Time\Month;
+use Lenorix\DatadisClient\Values\Cups;
+use Lenorix\LaravelDatadisClient\Facades\LaravelDatadisClient;
 use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
 /*
@@ -78,4 +80,17 @@ it('tells which months a refused daily refresh did not get', function () {
     }
 
     throw new LogicException('Expected a RepetitionWindowException.');
+});
+
+it('imports with the application time too: no time given is now, and a time a little ahead is inside the tolerance', function () {
+    $this->travelTo(Carbon::parse('2026-07-10 04:00', 'Europe/Madrid'));
+    $may = Month::of(2026, 5);
+    $april = Month::of(2026, 4);
+
+    // No `at`: the attempt is the travelled now, which the guard holds with that very time.
+    LaravelDatadisClient::rememberMaxPower(Cups::fromString(CUPS), '2', $may);
+    expect(heldTime(fn () => $may))->toBe(now()->getTimestamp());
+
+    // A few minutes ahead of the travelled now is a skewed clock, accepted; the system clock, months away, would refuse it as older than the window.
+    expect(LaravelDatadisClient::rememberMaxPower(Cups::fromString(CUPS), '2', $april, at: now()->addMinutes(5)->toDateTimeImmutable()))->toBeTrue();
 });

@@ -123,11 +123,17 @@ it('accepts between none and ten retries, and no more', function (int $max, bool
     expect($max === 0 ? $client === $inner : $client instanceof RetryingClient)->toBeTrue();
 })->with([[-1, false], [0, true], [1, true], [10, true], [11, false]]);
 
+it('accepts equal delays, and a longest one that is only a millisecond above the first', function (int $base, int $longest) {
+    config()->set('datadis-client.http.retries', ['max' => 1, 'base_delay_ms' => $base, 'max_delay_ms' => $longest]);
+
+    expect((new Retries(app()))->wrap(Mockery::mock(ClientInterface::class)))->toBeInstanceOf(RetryingClient::class);
+})->with([[1, 1], [5, 5], [5, 6]]);
+
 it('refuses delays that are not positive or that shrink', function (int $base, int $longest) {
     config()->set('datadis-client.http.retries', ['max' => 1, 'base_delay_ms' => $base, 'max_delay_ms' => $longest]);
 
     expect(fn () => (new Retries(app()))->wrap(Mockery::mock(ClientInterface::class)))->toThrow(ConfigurationException::class, 'delays must be positive');
-})->with([[0, 5], [-1, 5], [10, 5]]);
+})->with([[0, 5], [-1, 5], [10, 5], [2, 1]]);
 
 it('ignores the blank values of services.datadis, so an empty .env line does not blank an account out', function (mixed $blank) {
     config()->set('services.datadis', ['username' => $blank, 'password' => $blank, 'timeout' => $blank]);
@@ -147,4 +153,12 @@ it('settles the settings of an account given with numeric keys, as a typo in a c
     app(DatadisClient::class)->getSupplies();
 
     expect(array_column(logins(), 'username'))->toBe(['00000000T']);
+});
+
+it('pins the secret derived from an application key, so a deploy does not forget the guard', function () {
+    config()->set('datadis-client.ledger.key', null);
+    config()->set('app.key', '0123456789abcdef0123456789abcdef');
+
+    // A golden value: if the derivation changes, every query held by the old version is forgotten by the new one.
+    expect(bin2hex((new GuardLedgers(app()))->secret()))->toBe('34f21dad12fa08e510d04accd8d6ea3f822de72e94278c7b1986d891f6bf8de7');
 });

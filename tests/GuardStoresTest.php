@@ -22,7 +22,7 @@ function useGuardStore(string $driver): void
 {
     $config = match ($driver) {
         'array' => ['driver' => 'array'],
-        'file' => ['driver' => 'file', 'path' => sys_get_temp_dir().'/datadis-guard-'.bin2hex(random_bytes(4))],
+        'file' => ['driver' => 'file', 'path' => temporaryPath('datadis-guard')],
         'database' => ['driver' => 'database', 'connection' => 'testing', 'table' => 'cache', 'lock_connection' => 'testing', 'lock_table' => 'cache_locks'],
     };
 

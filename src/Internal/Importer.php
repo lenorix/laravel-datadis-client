@@ -12,7 +12,6 @@ use InvalidArgumentException;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Exceptions\ConfigurationException;
 use Lenorix\DatadisClient\Exceptions\LedgerUnavailableException;
-use Psr\Clock\ClockInterface;
 use SensitiveParameter;
 use Throwable;
 
@@ -30,7 +29,6 @@ final class Importer
         private readonly AccountSettings $accounts,
         private readonly GuardLedgers $guard,
         private readonly ReportLevel $reportLevel,
-        private readonly ClockInterface $clock,
     ) {}
 
     /**
@@ -96,6 +94,6 @@ final class Importer
         $settings = $this->accounts->find($name)
             ?? throw new InvalidArgumentException("The Datadis account [{$name}] is not configured in services.datadis or datadis-client.accounts.");
 
-        return DatadisClient::fromArray($settings, http: new MutedTransport, ledger: $this->guard->ledger($name), clock: $this->clock);
+        return DatadisClient::fromArray($settings, http: new MutedTransport, ledger: $this->guard->ledger($name));
     }
 }

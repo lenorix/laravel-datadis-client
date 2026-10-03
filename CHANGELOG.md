@@ -2,6 +2,13 @@
 
 All notable changes to `laravel-datadis-client` will be documented in this file.
 
+## Unreleased
+
+- **Fixed**: the settings of an account (password included) and the username given to the lock name are `#[SensitiveParameter]`: a stack trace printed by an error page or a tracker held the password and the NIF when the HTTP settings were wrong. A cache that fails taking the import lock is a `LedgerUnavailableException`, as documented, and a lock that cannot be released after a finished import is not an error.
+- **`FakesDatadis`** answers an empty `list-authorization` and `partner-user-list` as a bare list and no groups as the plain text `No groups`, as the real service does (captured in October 2026).
+- **Docs**: reactive energy sharing maximum power's entry is stated as seen on the real service, the authorizations paragraph says which answers were captured, the retry waits are jittered, and a broken table and broken code fences are whole again.
+- **Tests**: the import path with a travelled clock, the default account when it is not `default`, the boundaries of the retry delays, the unusable-supply cases of the commands, the secret derived from the application key pinned, and no temporary files left behind.
+
 ## 0.4.0 - 2026-10-03
 
 - **Requires `lenorix/datadis-client` ^0.9.0.** What it changes for an application is in the development skill and the README: a `404` of the supplies or distributors list that is not `No supplies`, a write answered with an HTML page and a login that does not answer a JWT are an `UninterpretableResponseException`; a failure after a `401` and a new login is reported as what it is; exceptions can be serialized and the clients refuse to be; an import leaves a held key whose time cannot be read (`rememberMaxPower()` and its twins return `false`); and a billing total leaves out the readings whose time could not be placed. `FakesDatadis` answers the distributors with their codes, in the shape of each API version, since an answer without its list is no longer taken for no data.
