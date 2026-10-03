@@ -30,7 +30,7 @@ Every surviving mutant is a missing test or dead code; the few that cannot be to
 ```
 
 - Add a test for every change; the coverage of `src/` must stay at 100 %.
-- A test that needs Datadis fakes it with `Http::fake()` (the test environment uses Laravel's HTTP stack) or, with `datadis-client.http.stack` set to `guzzle`, with a Guzzle `MockHandler` in `datadis-client.http.options.handler` (on the `laravel` stack that option is ignored).
+- A test that needs Datadis fakes it with `FakesDatadis::fake()` (or `Http::fake()` on the test environment's Laravel HTTP stack) or, with `datadis-client.http.stack` set to `guzzle`, with a Guzzle `MockHandler` in `datadis-client.http.options.handler` (on the `laravel` stack that option is ignored).
 - A failing property prints a seed: reproduce it with `ERIS_SEED=<seed> vendor/bin/pest --filter '<test name>'`.
 - Keep credentials, tokens, NIFs and CUPS out of code, tests and commits: use the placeholders already there (`00000000T`, `12345678Z`, `ES0000000000000000AA0A`).
 - Update the README, the Laravel Boost guideline and skills (`resources/boost`) and the CHANGELOG when behaviour changes.
