@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
 use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Commands\DatadisCommand;
+use Lenorix\LaravelDatadisClient\Tests\Support\FormatsOnceOutputStyle;
 use Symfony\Component\Console\Exception\RuntimeException;
-use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
@@ -406,19 +406,6 @@ it('prints what Datadis says as it is, even when it looks like console formattin
  * does it again. A plain Testbench output has no such wrapper, so an escape that passes there can still crash in a
  * real application: this output formats once, as the wrapper does, and Laravel builds every command's output from it.
  */
-class FormatsOnceOutputStyle extends OutputStyle
-{
-    public function writeln(string|iterable $messages, int $type = self::OUTPUT_NORMAL): void
-    {
-        $formatter = new OutputFormatter(false);
-        $format = ($type & self::OUTPUT_RAW) === 0;
-
-        parent::writeln(
-            is_string($messages) ? ($format ? (string) $formatter->format($messages) : $messages) : array_map(fn (string $m) => $format ? (string) $formatter->format($m) : $m, [...$messages]),
-            $type,
-        );
-    }
-}
 
 it('survives an output that formats each line once before writing it', function () {
     app()->bind(OutputStyle::class, fn ($app, array $parameters) => new FormatsOnceOutputStyle($parameters['input'], $parameters['output']));
@@ -566,4 +553,17 @@ it('turns the values of a repeated option into a list, whatever their keys', fun
     expect(array_keys($command->cupsOf(['first' => CUPS, 'second' => CUPS])))->toBe([0, 1]);
     expect($command->cupsOf([]))->toBe([]);
     expect($command->cupsOf(['not an array' => CUPS]))->toHaveCount(1);
+});
+
+it('keeps a backslash at the end of a text, which would escape the closing tag of the line\'s style', function () {
+    fakeForCommands([
+        '*/get-supplies*' => Http::response(['supplies' => [[
+            'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
+        ]], 'distributorError' => [['distributorCode' => '2', 'distributorName' => 'D', 'errorCode' => '500', 'errorDescription' => 'C:\\temp\\']]]),
+    ]);
+
+    [$code, $output] = runCommand('datadis:supplies');
+
+    expect($code)->toBe(0);
+    expect($output)->toContain('C:\\temp\\'.PHP_EOL);
 });

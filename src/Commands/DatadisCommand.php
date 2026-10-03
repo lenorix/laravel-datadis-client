@@ -41,16 +41,17 @@ abstract class DatadisCommand extends Command
     /*
      * What the commands print can come from Datadis or from the user (an account name, a distributor's name, an
      * answer). The console formatter would read `<fg=foo>` in it as a style and fail, and a wrapper of the output
-     * that formats twice (the one Laravel's skeleton installs for AI agents) undoes any escape. So text with a `<`
-     * is written raw, unformatted, and the cells of a table, which cannot be, have their `<` swapped for a
-     * look-alike that cannot open a tag.
+     * that formats twice (the one Laravel's skeleton installs for AI agents) undoes any escape. A backslash is a
+     * hazard too: before the closing tag of the style it escapes it, and the text loses its last character. So text with
+     * a `<` or a `\` is written raw, unformatted, and the cells of a table, which cannot be, have their `<` swapped for
+     * a look-alike that cannot open a tag.
      */
 
     public function line($string, $style = null, $verbosity = null)
     {
         $string = (string) $string;
 
-        if (str_contains($string, '<')) {
+        if (str_contains($string, '<') || str_contains($string, '\\')) {
             /** @var int<0, 511> $type */
             $type = $this->parseVerbosity($verbosity) | OutputInterface::OUTPUT_RAW;
 
