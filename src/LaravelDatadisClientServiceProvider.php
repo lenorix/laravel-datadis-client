@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Lenorix\LaravelDatadisClient;
 
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -36,8 +38,6 @@ class LaravelDatadisClientServiceProvider extends PackageServiceProvider
 
     public function packageRegistered(): void
     {
-        $this->app->bind(LaravelDatadisClient::class);
-
         // bind, not singleton: the client is built where it is used, after any Http::fake() in a test.
         $this->app->bind(DatadisClient::class, fn (Application $app) => $app->make(LaravelDatadisClient::class)->account());
         $this->app->bind(PublicApiClient::class, fn (Application $app) => $app->make(LaravelDatadisClient::class)->publicApi());

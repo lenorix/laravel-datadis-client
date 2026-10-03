@@ -5,6 +5,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Lenorix\DatadisClient\DatadisClient;
+use Lenorix\DatadisClient\Values\Cups;
 use Lenorix\LaravelDatadisClient\Commands\DatadisCommand;
 use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Formatter\OutputFormatter;
@@ -510,3 +511,59 @@ it('prints every date of the rows it lists', function (string $command, string $
         ['2026-01-07', '2027-02-08'],
     ],
 ]);
+
+it('prints a warning that is an object with a text, and a distributor error without a description', function () {
+    fakeForCommands([
+        '*/get-supplies*' => Http::response(['supplies' => [[
+            'cups' => CUPS, 'distributor' => 'X', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
+        ]], 'distributorError' => [['distributorCode' => '2', 'distributorName' => 'X', 'errorCode' => '500']]]),
+    ]);
+
+    [$code, $output] = runCommand('datadis:supplies');
+
+    expect($code)->toBe(0);
+    expect($output)->toContain('X');   // the table, and a warning with nothing to say, without a failure
+
+    $command = new class extends DatadisCommand
+    {
+        public $signature = 'datadis:warn-probe {--account=}';
+
+        protected function perform(DatadisClient $client): int
+        {
+            $this->warn(new class implements Stringable
+            {
+                public function __toString(): string
+                {
+                    return 'a <fg=foo>stringable</>';
+                }
+            });
+
+            return self::SUCCESS;
+        }
+    };
+    $buffer = new BufferedOutput;
+    $command->setLaravel(app());
+    $command->run(new ArrayInput([]), $buffer);
+
+    expect($buffer->fetch())->toContain('a <fg=foo>stringable</>');
+});
+
+it('turns the values of a repeated option into a list, whatever their keys', function () {
+    $command = new class extends DatadisCommand
+    {
+        protected function perform(DatadisClient $client): int
+        {
+            return self::SUCCESS;
+        }
+
+        /** @return list<Cups> */
+        public function cupsOf(array $values): array
+        {
+            return $this->cupsList($values);
+        }
+    };
+
+    expect(array_keys($command->cupsOf(['first' => CUPS, 'second' => CUPS])))->toBe([0, 1]);
+    expect($command->cupsOf([]))->toBe([]);
+    expect($command->cupsOf(['not an array' => CUPS]))->toHaveCount(1);
+});

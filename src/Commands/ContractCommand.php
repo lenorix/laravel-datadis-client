@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Lenorix\LaravelDatadisClient\Commands;
 
 use Lenorix\DatadisClient\DatadisClient;
@@ -26,7 +28,7 @@ class ContractCommand extends DatadisCommand
                 $contract->distributor,
                 $contract->marketer,
                 $contract->tariff()->name ?? $contract->accessFare,
-                implode(' / ', array_map(fn ($kw) => (string) $kw, $contract->contractedPowerkW)),
+                implode(' / ', $contract->contractedPowerkW),   // a missing period is an empty place
                 $contract->startDate?->format('Y-m-d'),
                 $contract->endDate?->format('Y-m-d') ?? 'open',
             ], $result->records),

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Lenorix\LaravelDatadisClient\Testing;
 
 use Illuminate\Http\Client\Factory;

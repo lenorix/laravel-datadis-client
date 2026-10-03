@@ -130,3 +130,23 @@ it('refuses delays that are not positive or that shrink', function (int $base, i
 
     expect(fn () => privately('withRetries', Mockery::mock(ClientInterface::class)))->toThrow(ConfigurationException::class, 'delays must be positive');
 })->with([[0, 5], [-1, 5], [10, 5]]);
+
+it('ignores the blank values of services.datadis, so an empty .env line does not blank an account out', function (mixed $blank) {
+    config()->set('services.datadis', ['username' => $blank, 'password' => $blank, 'timeout' => $blank]);
+    config()->set('datadis-client.accounts.default', ['username' => '00000000T', 'password' => 'from the account', 'timeout' => 7]);
+    fakeEverything();
+
+    app(DatadisClient::class)->getSupplies();
+
+    expect(array_column(logins(), 'username'))->toBe(['00000000T']);
+})->with(['an empty text' => [''], 'blanks' => ['   '], 'nothing' => [null]]);
+
+it('settles the settings of an account given with numeric keys, as a typo in a config file may leave them', function () {
+    config()->set('services.datadis', ['username' => '00000000T', 'password' => 'secret', 0 => 'stray', 7 => 'strays']);
+    config()->set('datadis-client.accounts.default', [3 => 'also stray', 'timeout' => 7]);
+    fakeEverything();
+
+    app(DatadisClient::class)->getSupplies();
+
+    expect(array_column(logins(), 'username'))->toBe(['00000000T']);
+});

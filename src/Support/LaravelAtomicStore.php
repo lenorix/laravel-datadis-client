@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Lenorix\LaravelDatadisClient\Support;
 
 use Illuminate\Contracts\Cache\Repository;

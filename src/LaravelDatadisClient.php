@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Lenorix\LaravelDatadisClient;
 
 use Closure;
@@ -324,9 +326,10 @@ class LaravelDatadisClient
         $account = is_array($account) ? $account : [];
         $service = array_filter(is_array($service) ? $service : [], fn ($value) => ! is_string($value) ? $value !== null : trim($value) !== '');
 
-        // Datadis reads `api_version` and `api-version` alike and prefers the first: drop the account's spelling of every key services sets.
+        // Datadis reads `api_version` and `api-version` alike and prefers the first: drop the account's `api_version` when services
+        // sets it as `api-version` (the other way round, the account's dash spelling loses to services' underscore one by itself).
         $spelled = array_map(static fn ($key) => str_replace('-', '_', (string) $key), array_keys($service));
-        $account = array_filter($account, static fn ($key) => ! in_array(str_replace('-', '_', (string) $key), $spelled, true), ARRAY_FILTER_USE_KEY);
+        $account = array_filter($account, static fn ($key) => ! in_array($key, $spelled, true), ARRAY_FILTER_USE_KEY);
 
         return array_replace($account, $service);
     }
@@ -350,7 +353,7 @@ class LaravelDatadisClient
         $config = DatadisConfig::fromArray($settings);
 
         $options = $this->config()->get('datadis-client.http.options');
-        // Guzzle's options are named: drop any numeric key.
+        // Guzzle's options are named: only string keys, which is also what the client factory's type says (a numeric key is harmless to Guzzle).
         $options = is_array($options) ? array_filter($options, is_string(...), ARRAY_FILTER_USE_KEY) : [];
 
         // Guzzle's `debug` prints each request, with the login's password, to the output.
