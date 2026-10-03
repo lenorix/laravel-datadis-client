@@ -388,7 +388,7 @@ it('prints what Datadis says as it is, even when it looks like console formattin
         '*/get-supplies*' => Http::response(['supplies' => [[
             'cups' => CUPS, 'distributor' => '<fg=foo>X</>', 'pointType' => 5, 'distributorCode' => '2', 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
         ]], 'distributorError' => [['distributorCode' => '2', 'distributorName' => 'X', 'errorCode' => '500', 'errorDescription' => '<fg=foo>down</>']]]),
-        '*/new-authorization*' => Http::response('<fg=foo>created</>', 200, ['Content-Type' => 'text/plain']),
+        '*/new-authorization*' => Http::response('done <fg=foo>created</>', 200, ['Content-Type' => 'text/plain']),
     ]);
 
     [$code, $output] = runCommand('datadis:supplies');
@@ -396,7 +396,7 @@ it('prints what Datadis says as it is, even when it looks like console formattin
 
     expect($code)->toBe(0);
     expect($output)->toContain('fg=foo>X', '<fg=foo>down</>');   // the table cell neutralises its <, the warning is raw
-    expect($authorizeOutput)->toContain('<fg=foo>created</>');
+    expect($authorizeOutput)->toContain('done <fg=foo>created</>');
 });
 
 /*
@@ -577,4 +577,14 @@ it('keeps a backslash before a > in a table cell, which the console formatter wo
 
     expect($code)->toBe(0);
     expect($output)->toContain('a\\›b');   // the backslash stays, and the > gets a look-alike
+});
+
+it('fails cleanly when the answer to a write is an HTML page, instead of printing it as the answer', function () {
+    fakeForCommands(['*/new-authorization*' => Http::response('<html><body>Maintenance</body></html>', 200, ['Content-Type' => 'text/html'])]);
+
+    [$code, $output] = runCommand('datadis:authorize 12345678Z');
+
+    expect($code)->toBe(1);
+    expect($output)->toContain('the answer is an HTML page');
+    expect($output)->not->toContain('Maintenance');   // Datadis's page is described, never quoted
 });

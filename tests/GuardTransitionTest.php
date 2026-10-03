@@ -211,7 +211,7 @@ it('lets the newest attempt of a history set how long the guard waits', function
     'the newest first' => [[1, 23]],
 ]);
 
-it('replaces a held entry whose time has already expired', function () {
+it('leaves a held entry whose time is older than the window as it is, since it may be the claim of a worker still being made', function () {
     TtlSpyStore::$ttls = [];
     Cache::extend('spy', fn () => Cache::repository(new TtlSpyStore));
     config()->set('cache.stores.spy', ['driver' => 'spy']);
@@ -220,12 +220,15 @@ it('replaces a held entry whose time has already expired', function () {
     Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-23 hours'));
     $key = array_key_first(array_filter(TtlSpyStore::$ttls, fn ($ttl, $k) => str_starts_with($k, 'datadis_query_'), ARRAY_FILTER_USE_BOTH));
 
-    // The held entry keeps a time older than the window (as it would once the first attempt aged out).
-    app('cache')->store('spy')->put($key, time() - RequestLedger::WINDOW_SECONDS - 3600, 3600);
+    // The held entry keeps a time older than the window (as it would on a store that does not honour the lifetime).
+    $old = time() - RequestLedger::WINDOW_SECONDS - 3600;
+    app('cache')->store('spy')->put($key, $old, 3600);
     expect(heldTime(fn () => monthsAgo(2)))->toBeNull();
 
-    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
-    expect(abs(heldTime(fn () => monthsAgo(2)) - (time() - 3600)))->toBeLessThanOrEqual(5);
+    // A time that cannot be read may be a worker's claim that is being made: shortening it to an older attempt would free the
+    // query early, so the import (client 0.9.0) leaves it and says it recorded nothing.
+    expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeFalse();
+    expect(app('cache')->store('spy')->get($key))->toBe($old);
 });
 
 /** An array store that misses the first read of a guard key, as if a worker had sent between two steps of an import. */

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Lenorix\LaravelDatadisClient\Testing;
 
 use Illuminate\Http\Client\Factory;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -53,7 +54,10 @@ final class FakesDatadis
                 'cups' => self::CUPS, 'distributor' => 'A DISTRIBUTOR', 'pointType' => 5, 'distributorCode' => '2',
                 'validDateFrom' => '2020/01/01', 'validDateTo' => '',
             ], $supply)], 'distributorError' => []]),
-            '*/get-distributors-with-supplies*' => Http::response(['distributorError' => []]),
+            // v2 wraps the codes, v1 does not: the path says which one is asked.
+            '*/get-distributors-with-supplies*' => fn (Request $request) => str_contains($request->url(), '-v2')
+                ? Http::response(['distExistenceUser' => ['distributorCodes' => ['2']], 'distributorError' => []])
+                : Http::response(['distributorCodes' => ['2']]),
             '*/get-contract-detail*' => $list('contract'),
             '*/get-consumption-data*' => $list('timeCurve'),
             '*/get-max-power*' => $list('maxPower'),

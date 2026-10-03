@@ -9,7 +9,9 @@ use Lenorix\LaravelDatadisClient\Internal\GuardLedgers;
 use Lenorix\LaravelDatadisClient\Internal\Importer;
 use Lenorix\LaravelDatadisClient\Testing\FakesDatadis;
 
-const CUPS = FakesDatadis::CUPS;
+// A literal, not FakesDatadis::CUPS: a constant here would load that class while Pest boots, before a mutation run can replace it
+// (every mutant of the helper would then survive). A test checks that the two are the same.
+const CUPS = 'ES0000000000000000AA0A';
 
 /** A NIF with a valid control letter for any number. */
 function nifOf(int $number): string

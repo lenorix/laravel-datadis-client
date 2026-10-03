@@ -80,7 +80,7 @@ function offlineClientCalls(): array
 }
 
 it('covers every public method of the client', function () {
-    $methods = array_values(array_diff(get_class_methods(DatadisClient::class), ['__construct', 'fromArray']));
+    $methods = array_values(array_diff(get_class_methods(DatadisClient::class), ['__construct', 'fromArray', '__serialize']));
 
     expect([...array_keys(everyClientCall()), ...array_keys(offlineClientCalls())])->toEqualCanonicalizing($methods);
 });

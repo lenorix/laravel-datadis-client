@@ -77,7 +77,8 @@ it('answers each endpoint with the shape the real one has, which is the default 
         'cups' => FakesDatadis::CUPS, 'distributor' => 'A DISTRIBUTOR', 'pointType' => 5, 'distributorCode' => '2',
         'validDateFrom' => '2020/01/01', 'validDateTo' => '',
     ]], 'distributorError' => []]);
-    expect($get('/api-private/api/get-distributors-with-supplies-v2')->json())->toBe(['distributorError' => []]);
+    expect($get('/api-private/api/get-distributors-with-supplies-v2')->json())->toBe(['distExistenceUser' => ['distributorCodes' => ['2']], 'distributorError' => []]);
+    expect($get('/api-private/api/get-distributors-with-supplies')->json())->toBe(['distributorCodes' => ['2']]);
     expect($get('/api-private/api/get-contract-detail-v2')->json())->toBe($empty('contract'));
     expect($get('/api-private/api/get-consumption-data-v2')->json())->toBe($empty('timeCurve'));
     expect($get('/api-private/api/get-max-power-v2')->json())->toBe($empty('maxPower'));
@@ -119,4 +120,8 @@ it('fakes the calls whatever the environment, by forcing the package onto Larave
     FakesDatadis::fake();
 
     expect(app(DatadisClient::class)->getSupplies()->records)->toHaveCount(1);
+});
+
+it('has the same CUPS as the tests use', function () {
+    expect(FakesDatadis::CUPS)->toBe(CUPS);
 });
