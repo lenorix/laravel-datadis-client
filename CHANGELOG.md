@@ -2,7 +2,7 @@
 
 All notable changes to `laravel-datadis-client` will be documented in this file.
 
-## Unreleased
+## 0.3.0 - 2026-10-03
 
 - **Requires `lenorix/datadis-client` ^0.8.0**, which adds the `Refused` kind to the ledger's history: `DatadisLedgerChanged` is sent for a refusal too, with `lastAttemptAt` and `availableAt`.
 - **From `lenorix/datadis-client` 0.7.0**: it renames `consumptionDataOfBlockedUntil()`, `maxPowerOfBlockedUntil()` and `reactiveDataOfBlockedUntil()` to `consumptionDataBlockedUntilOf()`, `maxPowerBlockedUntilOf()` and `reactiveDataBlockedUntilOf()`; the docs and tests use the new names. The development skill also says what it changes: a month without consumption is an empty result, `tariff()` reads `codeFare` and takes a resolver, `checkLogin(fresh: true)` keeps the cached token when it fails, and a quarter-hourly answer without a convention is read as the end of each quarter.
@@ -11,6 +11,7 @@ All notable changes to `laravel-datadis-client` will be documented in this file.
 - **`DatadisLedgerChanged` event** for every query the guard claims, releases, imports or refuses: the account by name, the guard's opaque key, the time and the endpoint, and no personal data; a refusal also says when the attempt that holds the query was and when it may go again. A refusal by Datadis itself (a 429) is not an event: it is the `RepetitionWindowException`. What a listener throws is ignored.
 - **`Testing\FakesDatadis`**: `FakesDatadis::fake()` for an application's tests. It answers every endpoint and the login, starts from a fresh HTTP factory (so a second fake replaces the first, where `Http::fake()` keeps the first), puts the application's own answers before the defaults and fails on a URL nobody answers.
 - **Docs for the new refusals**: `NothingToRefreshException`, `OutOfServedRangeException` and `OutOfContractRangeException`, the months of a `RepetitionWindowException` and a sync job that records the months it did not get; reusing the `Supply` of a run; and what `checkLogin()` does.
+- **Strict types** in every source file, as the client has, and tests for the settings a deployment can get wrong (a blank default account, `services.datadis` over an account, retry limits, the guard's secret from the application key) and for the tables of rows without dates. `gitleaks` has an allowlist for the placeholder keys of those tests.
 - **The open data client follows the application's clock too**: `publicApi()` passes it the same clock as the private client, so a test that travels in time sees both agree about the token they share.
 
 ## 0.2.0 - 2026-10-02
