@@ -10,6 +10,14 @@ composer install
 
 The package needs PHP 8.4 and Laravel 13. No test calls the real Datadis, and none may: a consumption query it receives cannot be repeated for 24 hours.
 
+## Where things live
+
+- `src/LaravelDatadisClient.php`: the manager, the package's API (the facade forwards to it). It decides what to build and hands the rest on; it keeps no configuration, cache, HTTP factory or event dispatcher, because a facade holds it for the whole process and tests set those later.
+- `src/Internal/`: final, `@internal` classes the manager uses and nothing else may (an architecture test says so): `AccountSettings` (an account's settings, the default account), `HttpClients` and `Retries` (the HTTP stack, its options and the retry policy), `GuardLedgers` (the default cache without its events, the guard's secret, the ledger and its event), `Importer` (the lock and the client of an import, with `MutedTransport`) and `ReportLevel`. Each takes the container's services on every call: keep it so.
+- `src/Commands/`: the artisan commands; `Concerns/PrintsUntrustedText` prints text from Datadis or the user without letting it be read as console formatting.
+- `src/Events/`, `src/Support/` (the cache as the guard's store, the application's clock), `src/Testing/FakesDatadis` (the helper applications get, which the package's own tests use too).
+- `resources/boost/`: the Laravel Boost guideline and skills. `tests/Property/` has the property tests; `tests/Support/` the helpers.
+
 ## Before you push
 
 ```bash

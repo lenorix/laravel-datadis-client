@@ -122,3 +122,24 @@ it('refuses to remember a reactive energy query for an account on API v1, which 
     // ... and the maximum power one, which v1 has, is still remembered.
     expect(Datadis::rememberMaxPower(Cups::fromString(CUPS), '2', monthsAgo(2), at: new DateTimeImmutable('-1 hour')))->toBeTrue();
 });
+
+it('names the import lock of an account after a keyed hash of its username, forty hex digits long', function () {
+    $importer = new Importer(app());
+
+    $name = $importer->lockName('00000000T');
+
+    expect($name)->toMatch('/^datadis_import_[0-9a-f]{40}$/');
+    expect($name)->not->toContain('00000000T');
+    expect($importer->lockName('00000000T'))->toBe($name);              // the same account, the same lock
+    expect($importer->lockName('12345678Z'))->not->toBe($name);         // another account, another lock
+
+    config()->set('datadis-client.ledger.key', 'another secret of enough bytes');
+    expect($importer->lockName('00000000T'))->not->toBe($name);         // the secret keys it
+});
+
+it('keeps the name of the import lock stable, so two versions of the package that import during a deploy exclude each other', function () {
+    config()->set('datadis-client.ledger.key', 'my own secret of enough bytes');
+
+    // A golden value: if the name changes, a worker on the old version and one on the new would not share the lock.
+    expect((new Importer(app()))->lockName('00000000T'))->toBe('datadis_import_2e8e861723a567b3ebdc304365f6dadda520681a');
+});

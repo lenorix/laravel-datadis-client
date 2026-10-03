@@ -2,6 +2,12 @@
 
 All notable changes to `laravel-datadis-client` will be documented in this file.
 
+## Unreleased
+
+- **Internal restructuring, no change in the API**: the manager (486 lines, now 213) hands the settings of an account, its HTTP client and retry policy, the guard's cache and ledger, the imports and the report level to internal classes (`src/Internal`), and the safe printing of the commands to a trait. The public surface of the manager is pinned by a test, and architecture rules say the internal classes are final, are used only by the manager and each other, and every source file declares strict types.
+- **Fixed**: a text from Datadis that ends in a backslash (`C:\temp\`) lost it on the console, and a backslash before a `>` in a table cell was dropped (the formatter takes both for an escape). Found by a property test over hostile console text.
+- **Tests**: properties over the guard's events against what goes on the wire, over the settings of an account against an oracle and over hostile text; the test of the client is split by concern; the three fakes of the tests are `FakesDatadis`; the lock name is pinned so two versions of the package exclude each other during a deploy.
+
 ## 0.3.0 - 2026-10-03
 
 - **Requires `lenorix/datadis-client` ^0.8.0**, which adds the `Refused` kind to the ledger's history: `DatadisLedgerChanged` is sent for a refusal too, with `lastAttemptAt` and `availableAt`.
