@@ -27,6 +27,7 @@ composer test-coverage   # fails under 100 % of src/ (needs Xdebug or PCOV)
 composer phpstan         # PHPStan, level max
 composer format          # Pint fixes the style; composer lint only checks it
 composer audit           # known vulnerabilities in the dependencies
+```
 
 Mutation testing (what the tests would miss), on one class at a time and in series: `--parallel` loads the machine and Pest then reports mutants as timed out that are not. Fewer property cases and the fastest tests first make it much faster (the manager takes some three and a half minutes instead of twelve). The order needs the result cache that any earlier `vendor/bin/pest` run leaves:
 
@@ -35,8 +36,7 @@ vendor/bin/pest
 DATADIS_PBT_ITERATIONS=10 XDEBUG_MODE=coverage vendor/bin/pest --mutate --no-cache --covered-only --order-by=duration -v --class='Lenorix\LaravelDatadisClient\LaravelDatadisClient'
 ```
 
-Every surviving mutant is a missing test or dead code; the few that cannot be told apart from the original are listed in the pull request.
-```
+Every surviving mutant is a missing test or dead code; the few that cannot be told apart from the original are listed in the pull request. A constant in `tests/Support/helpers.php` that names a class of `src/` loads it while Pest boots, and every mutant of that class then survives: keep those constants literal.
 
 - Add a test for every change; the coverage of `src/` must stay at 100 %.
 - A test that needs Datadis fakes it with `FakesDatadis::fake()` (or `Http::fake()` on the test environment's Laravel HTTP stack) or, with `datadis-client.http.stack` set to `guzzle`, with a Guzzle `MockHandler` in `datadis-client.http.options.handler` (on the `laravel` stack that option is ignored).

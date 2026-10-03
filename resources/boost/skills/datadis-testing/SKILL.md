@@ -1,6 +1,6 @@
 ---
 name: datadis-testing
-description: Test code that uses lenorix/laravel-datadis-client by faking Datadis with Http::fake() - the login, supplies and data endpoints, the answer shapes, holders, failures and the 24 hour guard. Use when writing Pest or PHPUnit tests for Datadis integrations.
+description: Test code that uses lenorix/laravel-datadis-client by faking Datadis with FakesDatadis::fake() - the login, supplies and data endpoints, the answer shapes, holders, failures and the 24 hour guard. Use when writing Pest or PHPUnit tests for Datadis integrations.
 ---
 
 # Datadis Testing
@@ -45,13 +45,13 @@ FakesDatadis::fake([
 - **It does not touch the cache**: use `cache.default` as `array`, which Laravel empties between tests.
 - **The login** answers a JWT as text, `FakesDatadis::token()`: `iat` is `now()` and `exp` a day later, so a test that travels in time gets a token of its day. Any `header.payload.signature` with a numeric `exp` works; the signature is not verified, but a login answer that is not shaped like a JWT (`OK`, `null`) is refused. A token that has expired, or is about to (within about two minutes), is not reused: the client logs in again.
 - **The paths** end in `-v2` for API v2 (`get-supplies-v2`); the wildcard after the endpoint name covers it and the query string.
-- **Answer keys**: `supplies`, `contract`, `timeCurve`, `maxPower`, `reactiveEnergy`, `authorizations`, `groups`, `users`, always beside `distributorError`. The writes answer plain text.
+- **Answer keys**: `supplies`, `contract`, `timeCurve`, `maxPower` and `reactiveEnergy` come beside `distributorError`. `list-authorization` and `partner-user-list` really answer a bare JSON list, and `get-groups` the plain text `No groups` when there are none (captured in October 2026): `FakesDatadis` answers those shapes, and the client accepts the enveloped form too. The writes answer plain text.
 - **Make the supply queryable**: a CUPS as `ES` plus 16 digits plus 2 letters, a `distributorCode` and a `pointType`.
 
 ## What to test
 
 - **The 24 hour guard**: resolve the client twice (`app(DatadisClient::class)`), ask the same consumption twice, expect `RepetitionWindowException` the second time and only one consumption request: `Http::recorded(...)`.
-- **Failures**: `Http::response('', 404)` gives `NoDataException`, a `503` gives `ServiceUnavailableException`; assert `requestSent`. Harmless reads are retried: use `Http::sequence()->push('', 503)->push($ok)`. The retries wait for real (1 and 2 seconds by default), so in tests set `config()->set('datadis-client.http.retries', ['max' => 2, 'base_delay_ms' => 1, 'max_delay_ms' => 1])`, or `['max' => 0]` where a failed call must fail at once. Data queries and writes are never retried.
+- **Failures**: `Http::response('', 404)` gives `NoDataException`, a `503` gives `ServiceUnavailableException`; assert `requestSent`. Harmless reads are retried: use `Http::sequence()->push('', 503)->push($ok)`. The retries wait for real (up to 1 and 2 seconds by default: the waits are jittered), so in tests set `config()->set('datadis-client.http.retries', ['max' => 2, 'base_delay_ms' => 1, 'max_delay_ms' => 1])`, or `['max' => 0]` where a failed call must fail at once. Data queries and writes are never retried.
 - **Holders**: after `forHolder($nif)` the URL carries `authorizedNif=<NIF>`; it is omitted for the account's own NIF.
 - **Several days**: the package takes its time from the application, so `$this->travelTo(...)` (or `Carbon::setTestNow()`) moves the 24 hour guard, the range of `getLatest...Of()` and the life of the token together. Run a daily job over three days at the same Madrid time and each range differs from the day before, provided the fake supply's contract started before the current month (in the month a contract starts the range is that month every day: the exception of the sync skill; the default supply of `FakesDatadis` starts in 2020). Time travel moves the guard through its window only on a cache whose expiry follows `now()` (`array`, `file`, `database`): on Redis or Memcached a held key keeps its own time and the guard still refuses it after the travelled window, so use `array` in the tests that travel. Build the months you ask for from the travelled time, not from the real one: a month in the future is refused.
 - **Another account**: set `datadis-client.accounts.other`, then `LaravelDatadisClient::account('other')`.

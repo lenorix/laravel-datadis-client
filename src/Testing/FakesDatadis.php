@@ -64,9 +64,10 @@ final class FakesDatadis
             '*/get-reactive-data*' => Http::response(['reactiveEnergy' => [], 'distributorError' => []]),
             '*/new-authorization*' => $text('created'),
             '*/cancel-authorization*' => $text('cancelled'),
-            '*/list-authorization*' => $list('authorizations'),
-            '*/get-groups*' => $list('groups'),
-            '*/partner-user-list*' => $list('users'),
+            // As the real service answers an empty one (captured in October 2026): a bare list, and a plain text for no groups.
+            '*/list-authorization*' => Http::response([]),
+            '*/get-groups*' => Http::response('No groups'),
+            '*/partner-user-list*' => Http::response([]),
             '*/partner-delete-user*' => $text('unlinked'),
             '*/partner-agreement-date*' => Http::response(['partnerAgreementDate' => null]),
             '*/api-public/api-*' => Http::response([]),

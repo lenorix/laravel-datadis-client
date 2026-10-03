@@ -83,9 +83,9 @@ it('answers each endpoint with the shape the real one has, which is the default 
     expect($get('/api-private/api/get-consumption-data-v2')->json())->toBe($empty('timeCurve'));
     expect($get('/api-private/api/get-max-power-v2')->json())->toBe($empty('maxPower'));
     expect($get('/api-private/api/get-reactive-data-v2')->json())->toBe($empty('reactiveEnergy'));
-    expect($get('/api-private/api/list-authorization')->json())->toBe($empty('authorizations'));
-    expect($get('/api-private/api/get-groups')->json())->toBe($empty('groups'));
-    expect($get('/api-private/api/partner-user-list')->json())->toBe($empty('users'));
+    expect($get('/api-private/api/list-authorization')->json())->toBe([]);          // a bare list, as the real one
+    expect($get('/api-private/api/get-groups')->body())->toBe('No groups');         // plain text for no groups
+    expect($get('/api-private/api/partner-user-list')->json())->toBe([]);
     expect($get('/api-private/api/partner-agreement-date')->json())->toBe(['partnerAgreementDate' => null]);
     expect($get('/api-public/api-search')->json())->toBe([]);
 

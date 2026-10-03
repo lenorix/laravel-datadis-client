@@ -4,7 +4,7 @@ Reads electricity data from Datadis, where Spanish distributors publish supply d
 
 ### Rules that must not be broken
 
-- **The 24 hour rule.** Datadis refuses an identical consumption or maximum power query for 24 hours and counts the refused ones (its manual documents the rule for those two; the client applies it to reactive energy too, to be safe). Never loop over such a query and never add a retry of your own around it. When you move from a record of your own to this package, seed the guard with `LaravelDatadisClient::rememberConsumption()`, `::rememberMaxPower()` and `::rememberReactive()` (the facade, not the methods of the same name on an injected `DatadisClient`, which take the time first and no lock) or wait 24 hours and 10 minutes before sending, and pause the workers while you import; a repeat throws `RepetitionWindowException` before anything is sent.
+- **The 24 hour rule.** Datadis refuses an identical consumption or maximum power query for 24 hours and counts the refused ones (its manual documents the rule for those two; reactive energy shares maximum power's entry on the real service, so the client guards it too). Never loop over such a query and never add a retry of your own around it. When you move from a record of your own to this package, seed the guard with `LaravelDatadisClient::rememberConsumption()`, `::rememberMaxPower()` and `::rememberReactive()` (the facade, not the methods of the same name on an injected `DatadisClient`, which take the time first and no lock) or wait 24 hours and 10 minutes before sending, and pause the workers while you import; a repeat throws `RepetitionWindowException` before anything is sent.
 - **A daily refresh uses `getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()`,** never the same range every day: they alternate the range from one day to the next, so nothing repeats inside the window (one exception, below). One run a day. The exception: in the month the contract starts the range is that month every day, so a run within 24 hours and 10 minutes of the day before is refused; catch `RepetitionWindowException` (that month refreshes every second day). When the contract has nothing to refresh the call throws `NothingToRefreshException`: catch that type, not `InvalidRequestException`. Reactive energy has no such method: ask it for closed months only, on API v2 (an account on v1 throws `UnsupportedOperationException`), and never for the same CUPS and months as maximum power within 24 hours: they share one guard entry.
 - **To see what the guard does** listen to `Lenorix\LaravelDatadisClient\Events\DatadisLedgerChanged` (claimed, released, remembered, refused; the account by name, an opaque key, no CUPS or NIF; a refusal also says when the query may go again). A refusal by Datadis itself (a 429) has no event: it is the `RepetitionWindowException`.
 - **Never expose credentials.** The Datadis password and the token must not reach logs, events or request recorders. Keep `datadis-client.http.stack` unset (plain Guzzle) outside tests, and do not read the token cache key or dispatch cache events for it.
@@ -51,7 +51,7 @@ public function handle(DatadisClient $client): void
 - `datadis-development`: calls, results and errors.
 - `datadis-electricity-domain`: CUPS, access tariffs, periods P1 to P6, power, reactive energy and territories.
 - `datadis-sync`: scheduled jobs and backfills.
-- `datadis-testing`: faking Datadis with `Http::fake()`.
+- `datadis-testing`: faking Datadis with `FakesDatadis::fake()`.
 
 ### Official sources
 

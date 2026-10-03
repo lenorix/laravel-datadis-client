@@ -53,8 +53,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Datadis refuses an identical consumption or maximum power query for 24
-    | hours and counts the refused ones; the package guards reactive energy the
-    | same way. Only a keyed hash of each query is stored. `key` is that
+    | hours and counts the refused ones; reactive energy shares maximum power's
+    | entry on the real service, so the package guards it the same way. Only a keyed hash of each query is stored. `key` is that
     | secret: a text of at least 16 bytes, used as it is (a `base64:` prefix is
     | not decoded). Null derives one from `app.key`, which must give at least
     | 16 bytes. Anything else fails. Changing the secret, or rotating `app.key`

@@ -132,7 +132,7 @@ Datadis::cancelAuthorization($nif);
 Datadis::listAuthorization();
 ```
 
-These change data on Datadis and are never retried. Datadis documents them for API v1 and their answers are not verified yet: check the text they return.
+These change data on Datadis and are never retried. The answers of `new-authorization`, `cancel-authorization` and `partner-delete-user` have not been captured from the real service: the client returns the text Datadis sends, so check it. `listAuthorization()`, `partnerUserList()` and `partnerAgreementDate()` were captured in October 2026.
 
 ### Read an invoice period
 
@@ -185,13 +185,13 @@ All of them take `--account=second`. The ones that read (`supplies`, `contract`,
 The exit code tells a script what happened:
 
 - **0**: it worked, including an empty answer (nothing published yet) and a distributor error beside real data, which only prints a warning.
-- **1**: a wrong input, a Datadis error (a refused repeat of a guarded query, `RepetitionWindowException`, included: the query was not sent), or a distributor that failed so that no data came back.
+- **1**: a wrong input, a Datadis error (a refused repeat of a guarded query, `RepetitionWindowException`, included: when the package refuses it, the query was not sent), or a distributor that failed so that no data came back.
 
 ## What to know before production
 
 ### The 24 hour rule
 
-Datadis refuses an identical consumption or maximum power query for 24 hours, and counts the refused ones too. The package applies the same rule to reactive energy (API v2 only), to be safe, and reactive energy shares its entry with maximum power: asking both for the same CUPS and months within 24 hours refuses the second, so ask them for different months or on different days. The package stops a repeat before sending it and throws `RepetitionWindowException`, which is reported as a warning.
+Datadis refuses an identical consumption or maximum power query for 24 hours, and counts the refused ones too (its manual documents the rule for those two). Reactive energy (API v2 only) is guarded too, and shares its entry with maximum power: on the real service it is refused with the parameters of a maximum power query made just before (seen in October 2026 in the client's capture), while a consumption query for the same month does not collide with it. So ask maximum power and reactive energy for different months or on different days. The package stops a repeat before sending it and throws `RepetitionWindowException`, which is reported as a warning.
 
 - **Use `redis` or `database` as your cache** (`CACHE_STORE`). The package keeps the token and the guard in Laravel's default cache and has no cache setting of its own. Redis, Memcached and the database are shared by every worker and server; `file` only coordinates processes on one server, and `array` lives in one process, so with it the guard cannot stop another worker. The `null` driver remembers nothing and is refused.
 - **Set `DATADIS_LEDGER_KEY` if you rotate `APP_KEY`.** Without it the secret is derived from `APP_KEY`, and rotating the key makes the guard forget the last 24 hours.
@@ -220,7 +220,7 @@ Event::listen(function (DatadisLedgerChanged $event) {
     // $event->kind: Claimed (it is going out), Released (it never left, so it may be sent again), Remembered (an import),
     //               Refused (an attempt within the window holds it)
     // $event->account: the name of the account in `datadis-client.accounts`
-    // $event->key, $event->at, $event->endpoint
+    // $event->key, $event->at (when it was claimed or refused; for Remembered, the time of the imported attempt), $event->endpoint
     // $event->lastAttemptAt, $event->availableAt: for a refusal, the attempt that holds the query and when it may go again
 });
 ```
@@ -315,7 +315,7 @@ FakesDatadis::fake([
 `FakesDatadis::fake()` answers every endpoint of the client and the login, starts from a fresh HTTP factory (`Http::fake()` accumulates stubs, and the first one that matches wins, so a second fake would be ignored), puts your answers before the defaults, and fails on a URL nobody answers instead of reaching Datadis. It forces the package onto Laravel's HTTP client for the test (outside the testing environment it would send through plain Guzzle, which cannot be faked), and it replaces every fake the test had before, for any service: call it first, then add other services with `Http::fake()`, or pass them in its answers. `supply: [...]` changes fields of its default supply, and `FakesDatadis::token()` is a fake token for a test that needs one.
 
 - Do not set `DATADIS_HTTP_STACK=guzzle` in a `.env` your tests load: the package refuses to build the client, because a test would reach the real Datadis.
-- Harmless reads are retried with real waits (1 and 2 seconds by default). In tests that fail a call, set `config()->set('datadis-client.http.retries', ['max' => 0])`, or the delays to 1 ms (`'base_delay_ms' => 1, 'max_delay_ms' => 1`), so they do not sleep.
+- Harmless reads are retried with real waits (up to 1 and 2 seconds by default: the waits are jittered). In tests that fail a call, set `config()->set('datadis-client.http.retries', ['max' => 0])`, or the delays to 1 ms (`'base_delay_ms' => 1, 'max_delay_ms' => 1`), so they do not sleep.
 - The package takes its time from the application, so `travelTo()` and `Carbon::setTestNow()` move the guard, the range of the daily refresh and the life of the token together: a test can run a daily job over several days. `FakesDatadis` already answers the login with a token of the application's time. If you fake the login yourself, give the token an `exp` from `now()` (`now()->addDay()->timestamp`), not from `time()`, and answer with a closure (`'*/nikola-auth/tokens/login' => fn () => Http::response(...)`): a fixed body stays expired once the test has travelled. This works on a cache whose expiry follows `now()` (`array`, `file`, `database`); on Redis or Memcached a held key keeps its own time, and the guard still refuses it after the travelled window, so run the tests that travel on `array`.
 - To fake Datadis outside `testing`, set `DATADIS_HTTP_STACK=laravel`, or give a Guzzle mock handler with `config()->set('datadis-client.http.options.handler', $handlerStack)`.
 
@@ -329,7 +329,7 @@ All keys are in `config/datadis-client.php`.
 | `accounts.*` | `username`, `password`, `api_version` (`v1`/`v2`, `DATADIS_API_VERSION`), `timezone` (`DATADIS_TIMEZONE`), `timeout` (`DATADIS_TIMEOUT`), `connect_timeout` (`DATADIS_CONNECT_TIMEOUT`), `base_url`, `user_agent`, `check_username_control`. The account named `default` takes its credentials from `services.datadis`. | `v2`, `Europe/Madrid`, 120 s, 10 s |
 | `ledger.key` | Secret of at least 16 bytes for the guard (`DATADIS_LEDGER_KEY`). | from `APP_KEY` |
 | `http.stack` | `guzzle` or `laravel` (`DATADIS_HTTP_STACK`). `laravel` lets Laravel's events and recorders see the password and the token. | `guzzle`; `laravel` in tests |
-| `http.retries` | `max` (0 to 10, `DATADIS_HTTP_RETRIES`), `base_delay_ms`, `max_delay_ms`. | 2, 1000, 30000 |
+| `http.retries` | `max` (0 to 10, `DATADIS_HTTP_RETRIES`), `base_delay_ms`, `max_delay_ms`. Whole numbers, delays of at least 1 ms and `max_delay_ms` not below `base_delay_ms`, or the client fails to build. | 2, 1000, 30000 |
 | `http.options` | Extra Guzzle options for every call: a proxy, `verify`... They replace the package's own `timeout` and `connect_timeout`. `debug` is refused, because it would print the login password. | none |
 | `report_level` | PSR-3 log level of a refused repeat (`DATADIS_REPORT_LEVEL`), or `null` to leave your exception handler alone. | `warning` |
 
@@ -341,7 +341,7 @@ Run `php artisan boost:install` and, when Boost asks which third-party guideline
 
 - **Guideline** (always loaded): conventions and the rules not to break.
 - **`datadis-development`**: calls, results and errors.
-- **`datadis-electricity-domain`**: the Spanish electricity rules behind the data: CUPS, tariffs, periods, power and reactive energy. Every rule cites its official source (the BOE text of the Circular CNMC 3/2020 and of the RD 1110/2007, the CNMC and the Datadis manual).
+- **`datadis-electricity-domain`**: the Spanish electricity rules behind the data: CUPS, tariffs, periods, power and reactive energy. The rules cite their official source (where a point is the client's own mapping, the skill says so) (the BOE text of the Circular CNMC 3/2020 and of the RD 1110/2007, the CNMC and the Datadis manual).
 - **`datadis-sync`**: scheduled jobs and backfills.
 - **`datadis-testing`**: faking Datadis in tests.
 

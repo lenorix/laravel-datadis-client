@@ -84,7 +84,7 @@ The access tariff (`peaje de acceso`, Circular CNMC 3/2020) fixes how many perio
 *Source: the periods per territory are in the Circular, art. 7.2 and 7.3; the postal code mapping is the one the client's `Territory` implements.*
 
 - The first two digits of a postal code give the province: `07` Baleares, `35` and `38` Canarias, `51` Ceuta, `52` Melilla, `01` to `52` otherwise the Peninsula. `Territory::fromPostalCode()` returns `null` for anything else.
-- The Peninsula, Baleares, Ceuta and Melilla use CET and CEST. The Canary Islands use WET and WEST: give the client `timezone` `Atlantic/Canary` for those supplies.
+- The Peninsula, Baleares, Ceuta and Melilla use CET and CEST. The Canary Islands use WET and WEST: give the client `timezone` `Atlantic/Canary` for those supplies (the client's own mapping, not a regulation).
 - Baleares, the Canary Islands, Ceuta and Melilla each have their own seasons and hours in the six-period calendar (Circular, art. 7.2).
 
 ## Maximum power, reactive energy and self-consumption

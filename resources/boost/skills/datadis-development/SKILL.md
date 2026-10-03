@@ -47,7 +47,7 @@ $until = $client->consumptionDataBlockedUntilOf($supply, $from);      // ?DateTi
 
 `getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()` are for a job that runs every day: the range alternates between the current month and the previous plus the current month, so today's query is never yesterday's. Run it once a day. In the month the contract starts the range is that month every day (there is no previous month to alternate with), so a run within 24 hours and 10 minutes of the day before throws `RepetitionWindowException`: catch it. It throws `NothingToRefreshException` when the contract has nothing to refresh this month (it ended before it, or starts after it); catch that type, not `InvalidRequestException`, which would also swallow a bad argument. Reactive energy has no such method: ask it for closed months.
 
-The consumption and maximum power calls are subject to the 24 hour rule, which the Datadis manual documents (sections 4.3 and 4.4). The client applies it to the reactive call too, to be safe. The others are free to repeat.
+The consumption and maximum power calls are subject to the 24 hour rule, which the Datadis manual documents (sections 4.3 and 4.4). Reactive energy shares maximum power's entry on the real service (seen in October 2026 in the client's capture), so the client guards it too. The others are free to repeat.
 
 ### Writes
 
@@ -67,7 +67,7 @@ Read it with `getReactiveDataOf($supply, $from, $to)`. What to know before you d
 
 - **API v2 only.** Datadis documents `get-reactive-data-v2` and no v1 path, and the client has none either: on an account with `api_version` `v1`, `getReactiveData()`, `getReactiveDataOf()`, `rememberReactive()` and `reactiveDataBlockedUntil()` throw an `UnsupportedOperationException` before anything is sent. The other endpoints work on v1.
 - **Parameters:** the CUPS, the distributor code, the first and last month, and `authorizedNif` for a holder. No measurement type and no point type, so a supply listed without a point type can be asked.
-- **It shares its 24 hour entry with maximum power.** The guard (and Datadis, as third-party tools report: *"Consulta ya realizada en las últimas 24 horas"*) keys the query on the account and its parameters, not on the endpoint: asking maximum power and reactive energy for the same CUPS and the same months within 24 hours refuses the second, with a `RepetitionWindowException`. Ask them for different months or on different days (a tool of those examples widens the second range by a month), and remember that importing one query blocks the other.
+- **It shares its 24 hour entry with maximum power.** The guard, and Datadis itself (seen in October 2026 in the client's capture: a `429`, *"Consulta ya realizada en las últimas 24 horas"*, for reactive energy asked with the parameters of a maximum power query made just before), key the query on the account and its parameters, not on the endpoint: asking maximum power and reactive energy for the same CUPS and the same months within 24 hours refuses the second, with a `RepetitionWindowException`. Ask them for different months or on different days (one third-party tool widens the second range by a month when two windows collide), and remember that importing one query blocks the other.
 - **No daily method.** `getLatestConsumptionDataOf()` and `getLatestMaxPowerOf()` have no reactive twin: ask it for closed months.
 - **The answer is the least verified of the API.** The client documents `{cups, energy: [{date, energy_p1..energy_p6}], code, codeDescription}` with `date` as `YYYY/MM`, but no real answer with data has been captured, and it is usually empty for domestic supplies: do not assume its unit. A period without data comes as an object whose fields are all null plus a distributor error with code `8` and the description "No existen datos en el periodo solicitado" (codes are each distributor's, so the client takes `8` as "no data" only with that description): that is no data, not a failure.
 - **What the rule does with it** is in `datadis-electricity-domain`: only the excess over 33 % of the active energy is billed, over the whole billing period, so total the months of the period before you compare.
@@ -109,13 +109,13 @@ Every failure is a `Lenorix\DatadisClient\Exceptions\DatadisException` with `req
 | `AuthenticationException` | bad credentials, or the token was rejected | fix the credentials; if `requestSent`, the query counts |
 | `RequestRejectedException` | Datadis refused the parameters | fix them; never resend as is |
 | `InvalidRequestException` | refused before sending | fix; nothing was sent |
-| `OutOfServedRangeException` (`month`) | a month Datadis does not serve: in the future, or more than 24 months back | ask for a month inside the window |
+| `OutOfServedRangeException` (`month`) | a month Datadis does not serve: in the future, or 24 months back or more (the current month and the 23 before it are served) | ask for a month inside the window |
 | `OutOfContractRangeException` (`contractStart`, `contractEnd`) | a range before the contract started or after it ended | clip the range to the contract |
 | `NothingToRefreshException` | `getLatest...Of()` on a contract with nothing to refresh this month | skip the run |
-
-The last three are `InvalidRequestException`s: catch the specific type when you mean it, and let the parent report a real mistake.
 | `ServiceUnavailableException`, `TransportException` | Datadis or the network failed | later; a data query that may have arrived counts as used today |
 | `PageLimitReachedException` | `apiSearchAll()` or `apiSearchAutoAll()` stopped at `maxPages` with a full last page, after the last record | more records may remain: it carries `nextPage` and `skippedRows` |
+
+`OutOfServedRangeException`, `OutOfContractRangeException` and `NothingToRefreshException` are `InvalidRequestException`s: catch the specific type when you mean it, and let the parent report a real mistake.
 
 After a `401` the client logs in again and repeats only the calls that are safe to repeat: a guarded query, `newAuthorization()`, `cancelAuthorization()` and `partnerDeleteUser()` are not sent again, and fail with an `AuthenticationException` whose `requestSent` is `true`. A failure while logging in again after a `401` is reported as what it is (`ServiceUnavailableException`, `TransportException`, `UninterpretableResponseException`), still with the `requestSent` it had. A `RepetitionWindowException` carries the months the refused query asked for, `startDate` and `endDate`, whoever refused it (the ledger or Datadis's own 429). When the package refused it, it also carries `availableAt` (when the query is allowed again) and `lastAttemptAt`; both are `null` for a 429.
 
